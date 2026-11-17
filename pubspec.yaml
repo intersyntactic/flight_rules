@@ -1,0 +1,22 @@
+name: is_flight_rules
+description: >-
+  A trajectory's flight rules: what may leave this machine, to where, and as
+  which sign-in.
+version: 0.1.0-dev
+repository: https://github.com/intersyntactic/flight_rules
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  checked_json: ^0.2.1
+  is_effects: ^0.7.0
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.25.0
+
+# ModelSignInName arrives in is_effects 0.7.0, not yet published.
+dependency_overrides:
+  is_effects:
+    path: ../effects
