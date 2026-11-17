@@ -2,7 +2,7 @@ name: is_flight_rules
 description: >-
   A trajectory's flight rules: what may leave this machine, to where, and as
   which sign-in.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/intersyntactic/flight_rules
 
 environment:
@@ -10,7 +10,7 @@ environment:
 
 dependencies:
   checked_json: ^0.2.1
-  is_effects: ^0.7.0
+  is_effects: ^0.8.0
 
 dev_dependencies:
   lints: ^6.1.0
