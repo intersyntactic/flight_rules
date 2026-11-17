@@ -50,8 +50,8 @@ final class WhatMayLeaveThisMachine {
     );
   }
 
-  /// The model sign-ins the trajectory's agent loop is built with, by name;
-  /// loop_launcher maps each name to the credential it holds.
+  /// The model sign-ins a model call for this trajectory may go out as, by
+  /// name. The airlock makes the call; the loop holds no credential.
   final Set<ModelSignInName> modelSignInsTheLoopIsGiven;
 
   /// Each site the web driver may make a request to for this trajectory,

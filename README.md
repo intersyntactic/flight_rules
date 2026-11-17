@@ -21,8 +21,10 @@ rules.allowsWebRequest(docsOrigin, null);      // true: granted as nobody
 rules.allowsWebRequest(docsOrigin, teamsBot);  // false: not as that sign-in
 ```
 
-- `modelSignInsTheLoopIsGiven`: the model sign-ins the agent loop is built
-  with, by name. The credential behind each name never appears here.
+- `modelSignInsTheLoopIsGiven`: the model sign-ins a model call for this
+  trajectory may go out as, by name. The airlock makes the call; the loop
+  holds no credential, and the credential behind each name never appears
+  here.
 - `sitesTheWebDriverMayReach`: each grant is a site *and* who the request goes
   as, a sign-in or nobody. A site is never granted alone.
 - `programsNetwork`: whether the trajectory's programs have a network of their
