@@ -11,7 +11,7 @@ void main() {
   final bot = SignIn.parse('teams-bot')!;
   final claudeTeam = ModelSignInName.parse('claude-team')!;
   final rules = WhatMayLeaveThisMachine(
-    modelSignInsTheLoopIsGiven: [claudeTeam],
+    modelSignInsCallsMayGoOutAs: [claudeTeam],
     sitesTheWebDriverMayReach: [
       SiteAndSignIn(teams, GoesAsSignIn(bot)),
       SiteAndSignIn(docs, const GoesAsNobody()),
@@ -23,7 +23,7 @@ void main() {
     final back = WhatMayLeaveThisMachine.fromJson(
       JsonObject.decode(jsonEncode(rules.toJson())),
     );
-    expect(back.modelSignInsTheLoopIsGiven, rules.modelSignInsTheLoopIsGiven);
+    expect(back.modelSignInsCallsMayGoOutAs, rules.modelSignInsCallsMayGoOutAs);
     expect(back.sitesTheWebDriverMayReach, rules.sitesTheWebDriverMayReach);
     expect(back.programsNetwork, ProgramsNetwork.noNetworkOfTheirOwn);
   });
@@ -41,7 +41,7 @@ void main() {
     );
   });
 
-  test('a model call goes out only as a sign-in the loop is given', () {
+  test('a model call goes out only as a sign-in the rules name', () {
     expect(rules.allowsModelCall(claudeTeam), isTrue);
     expect(rules.allowsModelCall(ModelSignInName.parse('other')!), isFalse);
   });
@@ -74,14 +74,14 @@ void main() {
       <String, Object?>{},
       {...good, 'mayWrite': true},
       {...good, 'programsNetwork': 'visorUp'},
-      {...good, 'modelSignInsTheLoopIsGiven': 'claude-team'},
+      {...good, 'modelSignInsCallsMayGoOutAs': 'claude-team'},
       {
         ...good,
-        'modelSignInsTheLoopIsGiven': ['Claude Team'],
+        'modelSignInsCallsMayGoOutAs': ['Claude Team'],
       },
       {
         ...good,
-        'modelSignInsTheLoopIsGiven': [null],
+        'modelSignInsCallsMayGoOutAs': [null],
       },
       for (final bad in <Object?>[
         {...site, 'goesAs': null},

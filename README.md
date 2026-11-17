@@ -7,7 +7,7 @@ words can leave are named.
 
 ```dart
 final rules = WhatMayLeaveThisMachine(
-  modelSignInsTheLoopIsGiven: [ModelSignInName.parse('claude-team')!],
+  modelSignInsCallsMayGoOutAs: [ModelSignInName.parse('claude-team')!],
   sitesTheWebDriverMayReach: [
     SiteAndSignIn(Origin.parse('https://graph.microsoft.com')!,
         GoesAsSignIn(SignIn.parse('teams-bot')!)),
@@ -21,7 +21,7 @@ rules.allowsWebRequest(docsOrigin, null);      // true: granted as nobody
 rules.allowsWebRequest(docsOrigin, teamsBot);  // false: not as that sign-in
 ```
 
-- `modelSignInsTheLoopIsGiven`: the model sign-ins a model call for this
+- `modelSignInsCallsMayGoOutAs`: the model sign-ins a model call for this
   trajectory may go out as, by name. The airlock makes the call; the loop
   holds no credential, and the credential behind each name never appears
   here.

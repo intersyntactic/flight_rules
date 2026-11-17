@@ -11,11 +11,11 @@ import 'package:is_effects/is_effects.dart';
 /// each is named here.
 final class WhatMayLeaveThisMachine {
   WhatMayLeaveThisMachine({
-    required Iterable<ModelSignInName> modelSignInsTheLoopIsGiven,
+    required Iterable<ModelSignInName> modelSignInsCallsMayGoOutAs,
     required Iterable<SiteAndSignIn> sitesTheWebDriverMayReach,
     required this.programsNetwork,
-  }) : modelSignInsTheLoopIsGiven = Set.unmodifiable(
-         modelSignInsTheLoopIsGiven,
+  }) : modelSignInsCallsMayGoOutAs = Set.unmodifiable(
+         modelSignInsCallsMayGoOutAs,
        ),
        sitesTheWebDriverMayReach = Set.unmodifiable(sitesTheWebDriverMayReach);
 
@@ -28,14 +28,15 @@ final class WhatMayLeaveThisMachine {
     String field = 'whatMayLeaveThisMachine',
   ]) {
     _exactly(field, json, const {
-      'modelSignInsTheLoopIsGiven',
+      'modelSignInsCallsMayGoOutAs',
       'sitesTheWebDriverMayReach',
       'programsNetwork',
     });
     return WhatMayLeaveThisMachine(
-      modelSignInsTheLoopIsGiven: [
-        for (final (i, name) in json.list('modelSignInsTheLoopIsGiven').indexed)
-          decodeModelSignInName(name, '$field.modelSignInsTheLoopIsGiven[$i]'),
+      modelSignInsCallsMayGoOutAs: [
+        for (final (i, name)
+            in json.list('modelSignInsCallsMayGoOutAs').indexed)
+          decodeModelSignInName(name, '$field.modelSignInsCallsMayGoOutAs[$i]'),
       ],
       sitesTheWebDriverMayReach: [
         for (final (i, site)
@@ -52,7 +53,7 @@ final class WhatMayLeaveThisMachine {
 
   /// The model sign-ins a model call for this trajectory may go out as, by
   /// name. The airlock makes the call; the loop holds no credential.
-  final Set<ModelSignInName> modelSignInsTheLoopIsGiven;
+  final Set<ModelSignInName> modelSignInsCallsMayGoOutAs;
 
   /// Each site the web driver may make a request to for this trajectory,
   /// with the sign-in it goes as.
@@ -62,7 +63,7 @@ final class WhatMayLeaveThisMachine {
 
   /// Whether a model call may go out as [signIn].
   bool allowsModelCall(ModelSignInName signIn) =>
-      modelSignInsTheLoopIsGiven.contains(signIn);
+      modelSignInsCallsMayGoOutAs.contains(signIn);
 
   /// Whether a web request to [site], as [signIn] or as nobody when it is
   /// null, is granted by [sitesTheWebDriverMayReach]. A request under no
@@ -78,8 +79,8 @@ final class WhatMayLeaveThisMachine {
       );
 
   JsonObject toJson() => JsonObject.of({
-    'modelSignInsTheLoopIsGiven': [
-      for (final name in modelSignInsTheLoopIsGiven)
+    'modelSignInsCallsMayGoOutAs': [
+      for (final name in modelSignInsCallsMayGoOutAs)
         encodeModelSignInName(name),
     ],
     'sitesTheWebDriverMayReach': [
