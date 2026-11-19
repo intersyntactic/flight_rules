@@ -70,23 +70,27 @@ final class WhatMayLeaveThisMachine {
   /// The grant in [sitesTheWebDriverMayReach] that lets a web request to
   /// [site] go as [signIn], or as nobody when it is null; null when none
   /// does. [leasedNow] is each bot this trajectory holds a lease on right
-  /// now, by the pool it came from.
+  /// now, by the pool it came from; [pooled] is every sign-in in any pool
+  /// right now, whoever holds it.
   ///
   /// A request under no sign-in matches only a [GoesAsNobody] grant, so a
   /// grant to fetch a page anonymously never lets the trajectory make
-  /// requests there as a bot. One under a sign-in matches a grant of that
-  /// sign-in, or a [GoesAsBotLeasedFrom] grant whose pool's lease is that
-  /// sign-in. When both match, the grant of the sign-in is returned, since
-  /// it relies on no lease.
+  /// requests there as a bot. One under a sign-in matches a
+  /// [GoesAsBotLeasedFrom] grant whose pool's lease is that sign-in, or,
+  /// for a sign-in in no pool, a grant of that sign-in. A pooled bot's
+  /// sign-in is never granted by name, so no rules can let a trajectory
+  /// post as a bot leased to another. When both match, the grant of the
+  /// sign-in is returned, since it relies on no lease.
   SiteAndSignIn? grantFor(
     Origin site,
     SignIn? signIn, {
     required Map<BotPool, SignIn> leasedNow,
+    required Set<SignIn> pooled,
   }) {
     final candidates = switch (signIn) {
       null => [SiteAndSignIn(site, const GoesAsNobody())],
       final SignIn signIn => [
-        SiteAndSignIn(site, GoesAsSignIn(signIn)),
+        if (!pooled.contains(signIn)) SiteAndSignIn(site, GoesAsSignIn(signIn)),
         for (final MapEntry(key: pool, value: leased) in leasedNow.entries)
           if (leased == signIn) SiteAndSignIn(site, GoesAsBotLeasedFrom(pool)),
       ],

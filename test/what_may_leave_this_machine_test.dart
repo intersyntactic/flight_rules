@@ -30,7 +30,7 @@ void main() {
 
   test('a site is granted with its sign-in, never alone', () {
     SiteAndSignIn? grant(Origin site, SignIn? signIn) =>
-        rules.grantFor(site, signIn, leasedNow: const {});
+        rules.grantFor(site, signIn, leasedNow: const {}, pooled: const {});
     expect(grant(teams, bot), SiteAndSignIn(teams, GoesAsSignIn(bot)));
     expect(grant(docs, null), SiteAndSignIn(docs, const GoesAsNobody()));
     // No sign-in is not any sign-in, and a sign-in is not no sign-in.
@@ -45,6 +45,7 @@ void main() {
     final github = BotPool.parse('github-agents')!;
     final researcher1 = SignIn.parse('researcher1')!;
     final reviewer2 = SignIn.parse('reviewer2')!;
+    final pool = {researcher1, reviewer2};
     final leasedGrant = SiteAndSignIn(teams, GoesAsBotLeasedFrom(agents));
     final leasing = WhatMayLeaveThisMachine(
       modelSignInsCallsMayGoOutAs: [claudeTeam],
@@ -54,40 +55,94 @@ void main() {
 
     test('matches the bot leased from that pool, and only it', () {
       expect(
-        leasing.grantFor(teams, researcher1, leasedNow: {agents: researcher1}),
+        leasing.grantFor(
+          teams,
+          researcher1,
+          leasedNow: {agents: researcher1},
+          pooled: pool,
+        ),
         leasedGrant,
       );
       // Another bot of the same pool, leased to another trajectory.
       expect(
-        leasing.grantFor(teams, reviewer2, leasedNow: {agents: researcher1}),
+        leasing.grantFor(
+          teams,
+          reviewer2,
+          leasedNow: {agents: researcher1},
+          pooled: pool,
+        ),
         isNull,
       );
       expect(
-        leasing.grantFor(docs, researcher1, leasedNow: {agents: researcher1}),
+        leasing.grantFor(
+          docs,
+          researcher1,
+          leasedNow: {agents: researcher1},
+          pooled: pool,
+        ),
         isNull,
       );
     });
 
     test('matches nothing once the lease ends', () {
-      expect(leasing.grantFor(teams, researcher1, leasedNow: const {}), isNull);
+      expect(
+        leasing.grantFor(teams, researcher1, leasedNow: const {}, pooled: pool),
+        isNull,
+      );
     });
 
     test('matches nothing for a bot leased from another pool', () {
       expect(
-        leasing.grantFor(teams, researcher1, leasedNow: {github: researcher1}),
+        leasing.grantFor(
+          teams,
+          researcher1,
+          leasedNow: {github: researcher1},
+          pooled: pool,
+        ),
         isNull,
       );
     });
 
     test('never matches a request under no sign-in', () {
       expect(
-        leasing.grantFor(teams, null, leasedNow: {agents: researcher1}),
+        leasing.grantFor(
+          teams,
+          null,
+          leasedNow: {agents: researcher1},
+          pooled: pool,
+        ),
         isNull,
       );
     });
 
-    test('gives way to a grant of the sign-in itself, which needs no '
-        'lease', () {
+    test('a pooled bot is never granted by name', () {
+      final byName = WhatMayLeaveThisMachine(
+        modelSignInsCallsMayGoOutAs: [claudeTeam],
+        sitesTheWebDriverMayReach: [
+          SiteAndSignIn(teams, GoesAsSignIn(researcher1)),
+        ],
+        programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
+      );
+      // researcher1 is leased to another trajectory: the grant by name
+      // must not let this one post as it.
+      expect(
+        byName.grantFor(teams, researcher1, leasedNow: const {}, pooled: pool),
+        isNull,
+      );
+      // Out of every pool, the same grant holds.
+      expect(
+        byName.grantFor(
+          teams,
+          researcher1,
+          leasedNow: const {},
+          pooled: const {},
+        ),
+        SiteAndSignIn(teams, GoesAsSignIn(researcher1)),
+      );
+    });
+
+    test('a pooled bot this trajectory leases goes by the leased grant, '
+        'even beside a grant by name', () {
       final both = WhatMayLeaveThisMachine(
         modelSignInsCallsMayGoOutAs: [claudeTeam],
         sitesTheWebDriverMayReach: [
@@ -97,8 +152,13 @@ void main() {
         programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
       );
       expect(
-        both.grantFor(teams, researcher1, leasedNow: {agents: researcher1}),
-        SiteAndSignIn(teams, GoesAsSignIn(researcher1)),
+        both.grantFor(
+          teams,
+          researcher1,
+          leasedNow: {agents: researcher1},
+          pooled: pool,
+        ),
+        leasedGrant,
       );
     });
 

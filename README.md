@@ -36,16 +36,23 @@ final rules = WhatMayLeaveThisMachine(
   programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
 );
 
-rules.grantFor(docsOrigin, null, leasedNow: {});        // granted as nobody
-rules.grantFor(docsOrigin, researcher1, leasedNow: {}); // null: not as a bot
+final pooled = {researcher1, reviewer2};
+rules.grantFor(docsOrigin, null, leasedNow: {}, pooled: pooled);
+    // granted as nobody
+rules.grantFor(docsOrigin, researcher1, leasedNow: {}, pooled: pooled);
+    // null: not as a bot
 rules.grantFor(teamsOrigin, researcher1,
-    leasedNow: {teamsAgents: researcher1});              // the leased grant
-rules.grantFor(teamsOrigin, researcher1, leasedNow: {}); // null: lease ended
+    leasedNow: {teamsAgents: researcher1}, pooled: pooled);
+    // the leased grant
+rules.grantFor(teamsOrigin, researcher1, leasedNow: {}, pooled: pooled);
+    // null: lease ended
 ```
 
 `grantFor` returns the grant that allowed the request, not just yes or no,
 so the airlock can record which lease a decision relied on: one from a
 `GoesAsBotLeasedFrom` grant relied on that pool's lease, any other on none.
+A sign-in in `pooled` is never granted by name, so no rules, old or new,
+can let a trajectory post as a bot leased to another.
 
 - `modelSignInsCallsMayGoOutAs`: the model sign-ins a model call for this
   trajectory may go out as, by name. The airlock makes the call; the loop
