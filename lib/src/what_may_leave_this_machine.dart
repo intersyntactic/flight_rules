@@ -70,8 +70,9 @@ final class WhatMayLeaveThisMachine {
   /// The grant in [sitesTheWebDriverMayReach] that lets a web request to
   /// [site] go as [signIn], or as nobody when it is null; null when none
   /// does. [leasedNow] is each bot this trajectory holds a lease on right
-  /// now, by the pool it came from; [pooled] is every sign-in in any pool
-  /// right now, whoever holds it.
+  /// now, by the pool it came from; [pooled] is every sign-in ever added to
+  /// any pool, whoever holds it, since a bot taken out of a pool must not
+  /// become grantable by name while a lease on it may still run.
   ///
   /// A request under no sign-in matches only a [GoesAsNobody] grant, so a
   /// grant to fetch a page anonymously never lets the trajectory make
