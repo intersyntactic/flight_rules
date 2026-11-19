@@ -1,9 +1,28 @@
 # is_flight_rules
 
 A trajectory's flight rules: what may leave this machine, to where, and as
-which sign-in. They never say whether an action reads or writes. Files and
-programs on the machine carry nothing off it by themselves, so only the ways
-words can leave are named.
+which sign-in, and the model its loop starts on.
+
+```dart
+final flightRules = FlightRules.of(
+  whatMayLeaveThisMachine: rules,
+  startingModel: ModelAndSignIn(
+    signIn: ModelSignInName.parse('claude-team')!,
+    model: ModelName.parse('claude-opus-5-5')!,
+  ),
+); // null unless the rules let a model call go out as claude-team
+```
+
+`startingModel`'s sign-in is always one the rules let a model call go out as,
+so a trajectory is never started on a model whose first call is refused.
+`FlightRules.fromJson` reads `{"whatMayLeaveThisMachine": …,
+"startingModel": {"signIn": …, "model": …}}`; both keys are required.
+
+## What may leave this machine
+
+The rules never say whether an action reads or writes. Files and programs on
+the machine carry nothing off it by themselves, so only the ways words can
+leave are named.
 
 ```dart
 final rules = WhatMayLeaveThisMachine(
