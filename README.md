@@ -29,23 +29,33 @@ final rules = WhatMayLeaveThisMachine(
   modelSignInsCallsMayGoOutAs: [ModelSignInName.parse('claude-team')!],
   sitesTheWebDriverMayReach: [
     SiteAndSignIn(Origin.parse('https://graph.microsoft.com')!,
-        GoesAsSignIn(SignIn.parse('teams-bot')!)),
+        GoesAsBotLeasedFrom(BotPool.parse('teams-agents')!)),
     SiteAndSignIn(Origin.parse('https://docs.example.com')!,
         const GoesAsNobody()),
   ],
   programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
 );
 
-rules.allowsWebRequest(docsOrigin, null);      // true: granted as nobody
-rules.allowsWebRequest(docsOrigin, teamsBot);  // false: not as that sign-in
+rules.grantFor(docsOrigin, null, leasedNow: {});        // granted as nobody
+rules.grantFor(docsOrigin, researcher1, leasedNow: {}); // null: not as a bot
+rules.grantFor(teamsOrigin, researcher1,
+    leasedNow: {teamsAgents: researcher1});              // the leased grant
+rules.grantFor(teamsOrigin, researcher1, leasedNow: {}); // null: lease ended
 ```
+
+`grantFor` returns the grant that allowed the request, not just yes or no,
+so the airlock can record which lease a decision relied on: one from a
+`GoesAsBotLeasedFrom` grant relied on that pool's lease, any other on none.
 
 - `modelSignInsCallsMayGoOutAs`: the model sign-ins a model call for this
   trajectory may go out as, by name. The airlock makes the call; the loop
   holds no credential, and the credential behind each name never appears
   here.
 - `sitesTheWebDriverMayReach`: each grant is a site *and* who the request goes
-  as, a sign-in or nobody. A site is never granted alone.
+  as: a sign-in, the bot this trajectory leases from a pool, or nobody. A
+  site is never granted alone. Rules are copied when a mission is admitted,
+  before any bot is leased, so a grant names the pool, and matches only
+  while the trajectory holds a lease from it.
 - `programsNetwork`: whether the trajectory's programs have a network of their
   own. With `sharesThisMachinesNetwork` the site list limits only the web
   driver.

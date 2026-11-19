@@ -67,18 +67,32 @@ final class WhatMayLeaveThisMachine {
   bool allowsModelCall(ModelSignInName signIn) =>
       modelSignInsCallsMayGoOutAs.contains(signIn);
 
-  /// Whether a web request to [site], as [signIn] or as nobody when it is
-  /// null, is granted by [sitesTheWebDriverMayReach]. A request under no
-  /// sign-in matches only a [GoesAsNobody] grant, and one under a sign-in
-  /// only a grant of that sign-in, so a grant to fetch a page anonymously
-  /// never lets the trajectory make requests there as a bot.
-  bool allowsWebRequest(Origin site, SignIn? signIn) =>
-      sitesTheWebDriverMayReach.contains(
-        SiteAndSignIn(site, switch (signIn) {
-          final signIn? => GoesAsSignIn(signIn),
-          null => const GoesAsNobody(),
-        }),
-      );
+  /// The grant in [sitesTheWebDriverMayReach] that lets a web request to
+  /// [site] go as [signIn], or as nobody when it is null; null when none
+  /// does. [leasedNow] is each bot this trajectory holds a lease on right
+  /// now, by the pool it came from.
+  ///
+  /// A request under no sign-in matches only a [GoesAsNobody] grant, so a
+  /// grant to fetch a page anonymously never lets the trajectory make
+  /// requests there as a bot. One under a sign-in matches a grant of that
+  /// sign-in, or a [GoesAsBotLeasedFrom] grant whose pool's lease is that
+  /// sign-in. When both match, the grant of the sign-in is returned, since
+  /// it relies on no lease.
+  SiteAndSignIn? grantFor(
+    Origin site,
+    SignIn? signIn, {
+    required Map<BotPool, SignIn> leasedNow,
+  }) {
+    final candidates = switch (signIn) {
+      null => [SiteAndSignIn(site, const GoesAsNobody())],
+      final SignIn signIn => [
+        SiteAndSignIn(site, GoesAsSignIn(signIn)),
+        for (final MapEntry(key: pool, value: leased) in leasedNow.entries)
+          if (leased == signIn) SiteAndSignIn(site, GoesAsBotLeasedFrom(pool)),
+      ],
+    };
+    return candidates.where(sitesTheWebDriverMayReach.contains).firstOrNull;
+  }
 
   JsonObject toJson() => JsonObject.of({
     'modelSignInsCallsMayGoOutAs': [
@@ -134,8 +148,8 @@ final class SiteAndSignIn {
       JsonObject.of({'site': encodeOrigin(site), 'goesAs': goesAs._toJson()});
 }
 
-/// Who a request to a granted site goes as: a [GoesAsSignIn], or
-/// [GoesAsNobody]. Never null, so "no sign-in" cannot be read as "any
+/// Who a request to a granted site goes as: a [GoesAsSignIn], a
+/// [GoesAsBotLeasedFrom], or [GoesAsNobody]. Never null, so "no sign-in" cannot be read as "any
 /// sign-in", here or on the wire.
 sealed class GoesAs {
   const GoesAs();
@@ -145,6 +159,11 @@ sealed class GoesAs {
       case _GoesAsKind.signIn:
         exactly(field, json, const {'kind', 'signIn'});
         return GoesAsSignIn(decodeSignIn(json.raw('signIn'), '$field.signIn'));
+      case _GoesAsKind.botLeasedFrom:
+        exactly(field, json, const {'kind', 'pool'});
+        return GoesAsBotLeasedFrom(
+          decodeBotPool(json.raw('pool'), '$field.pool'),
+        );
       case _GoesAsKind.nobody:
         exactly(field, json, const {'kind'});
         return const GoesAsNobody();
@@ -174,6 +193,30 @@ final class GoesAsSignIn extends GoesAs {
   });
 }
 
+/// Requests go as the sign-in of the bot this trajectory leases from [pool],
+/// whichever bot that is when the request is decided. Rules are copied
+/// when a mission is admitted, before any bot is leased, so a grant can't
+/// name the bot; granting every bot in the pool would let one trajectory
+/// post as another's. With no lease from [pool], the grant matches nothing.
+final class GoesAsBotLeasedFrom extends GoesAs {
+  const GoesAsBotLeasedFrom(this.pool);
+
+  final BotPool pool;
+
+  @override
+  bool operator ==(Object other) =>
+      other is GoesAsBotLeasedFrom && other.pool == pool;
+
+  @override
+  int get hashCode => pool.hashCode;
+
+  @override
+  JsonObject _toJson() => JsonObject.of({
+    'kind': _GoesAsKind.botLeasedFrom.name,
+    'pool': encodeBotPool(pool),
+  });
+}
+
 /// Requests go under no sign-in.
 final class GoesAsNobody extends GoesAs {
   const GoesAsNobody();
@@ -189,4 +232,4 @@ final class GoesAsNobody extends GoesAs {
 }
 
 /// The tag a [GoesAs] carries on the wire.
-enum _GoesAsKind { signIn, nobody }
+enum _GoesAsKind { signIn, botLeasedFrom, nobody }
