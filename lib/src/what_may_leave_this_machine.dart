@@ -1,6 +1,8 @@
 import 'package:checked_json/checked_json.dart';
 import 'package:is_effects/is_effects.dart';
 
+import 'read_strictly.dart';
+
 /// A trajectory's rules: every way words can get off this machine, and what
 /// each may carry where.
 ///
@@ -27,7 +29,7 @@ final class WhatMayLeaveThisMachine {
     JsonObject json, [
     String field = 'whatMayLeaveThisMachine',
   ]) {
-    _exactly(field, json, const {
+    exactly(field, json, const {
       'modelSignInsCallsMayGoOutAs',
       'sitesTheWebDriverMayReach',
       'programsNetwork',
@@ -43,7 +45,7 @@ final class WhatMayLeaveThisMachine {
             in json.objects('sitesTheWebDriverMayReach').indexed)
           SiteAndSignIn.fromJson(site, '$field.sitesTheWebDriverMayReach[$i]'),
       ],
-      programsNetwork: _oneOf(
+      programsNetwork: oneOf(
         ProgramsNetwork.values,
         json.string('programsNetwork'),
         '$field.programsNetwork',
@@ -111,7 +113,7 @@ final class SiteAndSignIn {
   /// [json] read back, strictly, as [WhatMayLeaveThisMachine.fromJson]
   /// reads its parts.
   static SiteAndSignIn fromJson(JsonObject json, String field) {
-    _exactly(field, json, const {'site', 'goesAs'});
+    exactly(field, json, const {'site', 'goesAs'});
     return SiteAndSignIn(
       decodeOrigin(json.raw('site'), '$field.site'),
       GoesAs._fromJson(json.object('goesAs'), '$field.goesAs'),
@@ -139,12 +141,12 @@ sealed class GoesAs {
   const GoesAs();
 
   static GoesAs _fromJson(JsonObject json, String field) {
-    switch (_oneOf(_GoesAsKind.values, json.string('kind'), '$field.kind')) {
+    switch (oneOf(_GoesAsKind.values, json.string('kind'), '$field.kind')) {
       case _GoesAsKind.signIn:
-        _exactly(field, json, const {'kind', 'signIn'});
+        exactly(field, json, const {'kind', 'signIn'});
         return GoesAsSignIn(decodeSignIn(json.raw('signIn'), '$field.signIn'));
       case _GoesAsKind.nobody:
-        _exactly(field, json, const {'kind'});
+        exactly(field, json, const {'kind'});
         return const GoesAsNobody();
     }
   }
@@ -188,23 +190,3 @@ final class GoesAsNobody extends GoesAs {
 
 /// The tag a [GoesAs] carries on the wire.
 enum _GoesAsKind { signIn, nobody }
-
-/// The value of [values] named [name], or a [FormatException] naming
-/// [field] and every name it could have been.
-T _oneOf<T extends Enum>(List<T> values, String name, String field) =>
-    values.asNameMap()[name] ??
-    (throw FormatException(
-      '$field: not one of ${values.map((v) => v.name).join(', ')}: $name',
-    ));
-
-/// [json], refused with a [FormatException] naming [field] and each key it
-/// does not know, unless every key is one of [keys]. For a reader whose
-/// object must never be skimmed: a key it skipped could be one that
-/// restricts.
-JsonObject _exactly(String field, JsonObject json, Set<String> keys) {
-  final unknown = json.keys.where((key) => !keys.contains(key));
-  if (unknown.isNotEmpty) {
-    throw FormatException('$field: unexpected ${unknown.join(', ')}');
-  }
-  return json;
-}
