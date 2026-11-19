@@ -1,3 +1,7 @@
+## 0.1.2
+
+- Depends on is_effects ^0.9.0.
+
 ## 0.1.1
 
 - Depends on is_effects ^0.8.0.
