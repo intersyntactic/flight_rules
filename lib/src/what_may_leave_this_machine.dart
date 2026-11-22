@@ -81,9 +81,10 @@ final class WhatMayLeaveThisMachine {
       modelSignInsCallsMayGoOutAs.contains(signIn);
 
   /// The grant in [fetchesMayReach] that lets a fetch from [path] on [site]
-  /// go as [signIn], or as nobody when it is null; null when none does.
-  /// [leasedNow] and [pooled] are as [webRequestsGrantFor] takes them.
-  GrantToFetch? fetchGrantFor(
+  /// go as [signIn], or as nobody when it is null, with the prefix it was
+  /// granted under, for the request's `grantedPathPrefix`; null when none
+  /// does. [leasedNow] and [pooled] are as [webRequestsGrantFor] takes them.
+  ({GrantToFetch grant, PathPrefix grantedPathPrefix})? fetchGrantFor(
     Origin site,
     WebPath path,
     SignIn? signIn, {
@@ -93,7 +94,7 @@ final class WhatMayLeaveThisMachine {
     for (final goesAs in _goesAsFor(signIn, leasedNow, pooled)) {
       for (final grant in fetchesMayReach) {
         if (grant.goesAs == goesAs && grant.from.covers(site, path)) {
-          return grant;
+          return (grant: grant, grantedPathPrefix: grant.from.pathPrefix);
         }
       }
     }
@@ -101,9 +102,10 @@ final class WhatMayLeaveThisMachine {
   }
 
   /// The grant in [webRequestsMayReach] that lets a web request to [path]
-  /// on [site] go as [signIn], or as nobody when it is null; null when none
-  /// does. Every request a tool builds is decided on its own, and all of
-  /// them must have a grant.
+  /// on [site] go as [signIn], or as nobody when it is null, with the
+  /// prefix it was granted under, for the request's `grantedPathPrefix`;
+  /// null when none does. Every request a tool builds is decided on its
+  /// own, and all of them must have a grant.
   ///
   /// [leasedNow] is each bot this trajectory holds a lease on right now, by
   /// the pool it came from; [pooled] is every sign-in ever added to any
@@ -120,7 +122,8 @@ final class WhatMayLeaveThisMachine {
   /// sign-in is never granted by name, so no rules can let a trajectory
   /// post as a bot leased to another. When both match, the grant of the
   /// sign-in is returned, since it relies on no lease.
-  GrantToMakeWebRequests? webRequestsGrantFor(
+  ({GrantToMakeWebRequests grant, PathPrefix grantedPathPrefix})?
+  webRequestsGrantFor(
     Origin site,
     WebPath path,
     SignIn? signIn, {
@@ -130,10 +133,9 @@ final class WhatMayLeaveThisMachine {
   }) {
     for (final goesAs in _goesAsFor(signIn, leasedNow, pooled)) {
       for (final grant in webRequestsMayReach) {
-        if (grant.goesAs == goesAs &&
-            grant.to._covers(site, path, replyEndpoint)) {
-          return grant;
-        }
+        if (grant.goesAs != goesAs) continue;
+        final prefix = grant.to._prefixCovering(site, path, replyEndpoint);
+        if (prefix != null) return (grant: grant, grantedPathPrefix: prefix);
       }
     }
     return null;
@@ -264,7 +266,13 @@ sealed class WhereWebRequestsGo {
     }
   }
 
-  bool _covers(Origin site, WebPath path, AddressPrefix? replyEndpoint);
+  /// The path prefix under which a request to [path] on [site] goes here,
+  /// or null when it doesn't.
+  PathPrefix? _prefixCovering(
+    Origin site,
+    WebPath path,
+    AddressPrefix? replyEndpoint,
+  );
 
   JsonObject _toJson();
 }
@@ -276,8 +284,11 @@ final class ToAddressesUnder extends WhereWebRequestsGo {
   final AddressPrefix prefix;
 
   @override
-  bool _covers(Origin site, WebPath path, AddressPrefix? replyEndpoint) =>
-      prefix.covers(site, path);
+  PathPrefix? _prefixCovering(
+    Origin site,
+    WebPath path,
+    AddressPrefix? replyEndpoint,
+  ) => prefix.covers(site, path) ? prefix.pathPrefix : null;
 
   @override
   bool operator ==(Object other) =>
@@ -311,10 +322,16 @@ final class ToOwnReplyEndpoint extends WhereWebRequestsGo {
   final Set<Origin> onOneOf;
 
   @override
-  bool _covers(Origin site, WebPath path, AddressPrefix? replyEndpoint) =>
-      replyEndpoint != null &&
-      onOneOf.contains(replyEndpoint.origin) &&
-      replyEndpoint.covers(site, path);
+  PathPrefix? _prefixCovering(
+    Origin site,
+    WebPath path,
+    AddressPrefix? replyEndpoint,
+  ) => switch (replyEndpoint) {
+    final endpoint?
+        when onOneOf.contains(endpoint.origin) && endpoint.covers(site, path) =>
+      endpoint.pathPrefix,
+    _ => null,
+  };
 
   @override
   bool operator ==(Object other) =>

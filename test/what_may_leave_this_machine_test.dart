@@ -29,14 +29,15 @@ void main() {
     programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
   );
 
-  GrantToFetch? fetch(Origin site, String raw, SignIn? signIn) =>
-      rules.fetchGrantFor(
+  GrantToFetch? fetch(Origin site, String raw, SignIn? signIn) => rules
+      .fetchGrantFor(
         site,
         path(raw),
         signIn,
         leasedNow: const {},
         pooled: const {},
-      );
+      )
+      ?.grant;
 
   test('what may leave this machine reads back as it was written', () {
     final back = WhatMayLeaveThisMachine.fromJson(
@@ -138,14 +139,16 @@ void main() {
       String raw, {
       required AddressPrefix? replyEndpoint,
       SignIn? signIn,
-    }) => rules.webRequestsGrantFor(
-      site,
-      path(raw),
-      signIn ?? bot,
-      leasedNow: const {},
-      pooled: const {},
-      replyEndpoint: replyEndpoint,
-    );
+    }) => rules
+        .webRequestsGrantFor(
+          site,
+          path(raw),
+          signIn ?? bot,
+          leasedNow: const {},
+          pooled: const {},
+          replyEndpoint: replyEndpoint,
+        )
+        ?.grant;
 
     test('reaches under that endpoint, in either spelling', () {
       expect(
@@ -206,6 +209,58 @@ void main() {
     });
   });
 
+  test('each grant says the prefix it was granted under', () {
+    expect(
+      rules
+          .fetchGrantFor(
+            graph,
+            path('/v1.0/drives/abc/items'),
+            bot,
+            leasedNow: const {},
+            pooled: const {},
+          )
+          ?.grantedPathPrefix,
+      driveAbc.pathPrefix,
+    );
+    final fixed = under(teams, '/v3/conversations/x/');
+    final toFixed = WhatMayLeaveThisMachine(
+      modelSignInsCallsMayGoOutAs: [claudeTeam],
+      fetchesMayReach: const [],
+      webRequestsMayReach: [
+        GrantToMakeWebRequests(ToAddressesUnder(fixed), GoesAsSignIn(bot)),
+      ],
+      programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
+    );
+    expect(
+      toFixed
+          .webRequestsGrantFor(
+            teams,
+            path('/v3/conversations/x/activities'),
+            bot,
+            leasedNow: const {},
+            pooled: const {},
+            replyEndpoint: null,
+          )
+          ?.grantedPathPrefix,
+      fixed.pathPrefix,
+    );
+    // A reply grant names no prefix of its own: it is the endpoint's.
+    final endpoint = under(teams, '/amer/v3/conversations/19%3Aabc/');
+    expect(
+      rules
+          .webRequestsGrantFor(
+            teams,
+            path('/amer/v3/conversations/19:abc/activities'),
+            bot,
+            leasedNow: const {},
+            pooled: const {},
+            replyEndpoint: endpoint,
+          )
+          ?.grantedPathPrefix,
+      endpoint.pathPrefix,
+    );
+  });
+
   group('a grant to the bot leased from a pool', () {
     final agents = BotPool.parse('teams-agents')!;
     final github = BotPool.parse('github-agents')!;
@@ -231,14 +286,16 @@ void main() {
       SignIn? signIn, {
       required Map<BotPool, SignIn> leasedNow,
       required Set<SignIn> pooled,
-    }) => rules.webRequestsGrantFor(
-      site,
-      path('/v3/conversations/x/activities'),
-      signIn,
-      leasedNow: leasedNow,
-      pooled: pooled,
-      replyEndpoint: null,
-    );
+    }) => rules
+        .webRequestsGrantFor(
+          site,
+          path('/v3/conversations/x/activities'),
+          signIn,
+          leasedNow: leasedNow,
+          pooled: pooled,
+          replyEndpoint: null,
+        )
+        ?.grant;
 
     test('matches the bot leased from that pool, and only it', () {
       expect(

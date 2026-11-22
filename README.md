@@ -66,9 +66,12 @@ rules.webRequestsGrantFor(teams, replyPath, researcher1,
 ```
 
 Each grant method returns the grant that allowed the request, not just yes
-or no, so the airlock can record which lease a decision relied on: one from
-a `GoesAsBotLeasedFrom` grant relied on that pool's lease, any other on
-none. A sign-in in `pooled` is never granted by name, so no rules, old or
+or no, so the airlock can record which entries a decision relied on: one
+from a `GoesAsBotLeasedFrom` grant relied on that pool's lease, any other
+on none beyond the rules. It returns too the `grantedPathPrefix` the
+request was granted under, which the airlock puts on is_effects' `Request`
+so the driver keeps a redirect on the same site under it; for a reply grant
+it is the endpoint's prefix, never one the rules wrote. A sign-in in `pooled` is never granted by name, so no rules, old or
 new, can let a trajectory post as a bot leased to another.
 
 - `modelSignInsCallsMayGoOutAs`: the model sign-ins a model call for this
