@@ -209,6 +209,103 @@ void main() {
     });
   });
 
+  group('the sign-in a reply goes as', () {
+    final agents = BotPool.parse('teams-agents')!;
+    final researcher1 = SignIn.parse('researcher1')!;
+    final endpoint = under(teams, '/amer/v3/conversations/19%3Aabc/');
+    WhatMayLeaveThisMachine replyingAs(List<GoesAs> goesAs) =>
+        WhatMayLeaveThisMachine(
+          modelSignInsCallsMayGoOutAs: [claudeTeam],
+          fetchesMayReach: const [],
+          webRequestsMayReach: [
+            for (final as in goesAs)
+              GrantToMakeWebRequests(ToOwnReplyEndpoint.of([teams])!, as),
+          ],
+          programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
+        );
+
+    /// The chosen sign-in, after checking the airlock grants a reply as it.
+    SignIn? chosen(
+      WhatMayLeaveThisMachine rules, {
+      AddressPrefix? at,
+      Map<BotPool, SignIn> leasedNow = const {},
+      Set<SignIn> pooled = const {},
+    }) {
+      final replyEndpoint = at ?? endpoint;
+      final signIn = rules.signInForReply(
+        replyEndpoint: replyEndpoint,
+        leasedNow: leasedNow,
+        pooled: pooled,
+      );
+      if (signIn != null) {
+        expect(
+          rules.webRequestsGrantFor(
+            replyEndpoint.origin,
+            WebPath.parse('${replyEndpoint.pathPrefix}activities')!,
+            signIn,
+            leasedNow: leasedNow,
+            pooled: pooled,
+            replyEndpoint: replyEndpoint,
+          ),
+          isNotNull,
+          reason: 'the airlock must grant a reply as the sign-in chosen',
+        );
+      }
+      return signIn;
+    }
+
+    test('is the named sign-in of the reply grant', () {
+      expect(chosen(replyingAs([GoesAsSignIn(bot)])), bot);
+    });
+
+    test('is the bot leased now, for a grant to the leased bot', () {
+      final leased = replyingAs([GoesAsBotLeasedFrom(agents)]);
+      expect(chosen(leased, leasedNow: {agents: researcher1}), researcher1);
+      expect(chosen(leased), isNull);
+    });
+
+    test('prefers the named sign-in, as the airlock does', () {
+      final both = replyingAs([GoesAsBotLeasedFrom(agents), GoesAsSignIn(bot)]);
+      expect(chosen(both, leasedNow: {agents: researcher1}), bot);
+    });
+
+    test('never a pooled bot by name', () {
+      final byName = replyingAs([GoesAsSignIn(researcher1)]);
+      expect(chosen(byName, pooled: {researcher1}), isNull);
+      final orLeased = replyingAs([
+        GoesAsSignIn(researcher1),
+        GoesAsBotLeasedFrom(agents),
+      ]);
+      expect(
+        chosen(
+          orLeased,
+          leasedNow: {agents: researcher1},
+          pooled: {researcher1},
+        ),
+        researcher1,
+      );
+    });
+
+    test('is none for a grant under no sign-in', () {
+      expect(chosen(replyingAs(const [GoesAsNobody()])), isNull);
+    });
+
+    test('is none for an endpoint on an origin no reply grant names', () {
+      final elsewhere = Origin.parse('https://evil.example')!;
+      expect(
+        chosen(
+          replyingAs([GoesAsSignIn(bot)]),
+          at: under(elsewhere, '/amer/v3/conversations/19%3Aabc/'),
+        ),
+        isNull,
+      );
+    });
+
+    test('is none without a reply grant', () {
+      expect(chosen(replyingAs(const [])), isNull);
+    });
+  });
+
   test('each grant says the prefix it was granted under', () {
     expect(
       rules

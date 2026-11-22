@@ -141,6 +141,38 @@ final class WhatMayLeaveThisMachine {
     return null;
   }
 
+  /// The sign-in a reply to [replyEndpoint] can go as: one a
+  /// [ToOwnReplyEndpoint] grant on [replyEndpoint]'s origin goes as, by
+  /// name before by lease, as [webRequestsGrantFor] prefers, so every
+  /// request the loop builds under the endpoint as it is granted. Null when
+  /// none can. A reply grant under no sign-in is never chosen, since a
+  /// reply is posted as someone. [leasedNow] and [pooled] are as
+  /// [webRequestsGrantFor] takes them.
+  SignIn? signInForReply({
+    required AddressPrefix replyEndpoint,
+    required Map<BotPool, SignIn> leasedNow,
+    required Set<SignIn> pooled,
+  }) {
+    final replyGrantsGoAs = [
+      for (final grant in webRequestsMayReach)
+        if (grant.to case ToOwnReplyEndpoint(:final onOneOf)
+            when onOneOf.contains(replyEndpoint.origin))
+          grant.goesAs,
+    ];
+    for (final goesAs in replyGrantsGoAs) {
+      if (goesAs case GoesAsSignIn(:final signIn)
+          when !pooled.contains(signIn)) {
+        return signIn;
+      }
+    }
+    for (final goesAs in replyGrantsGoAs) {
+      if (goesAs case GoesAsBotLeasedFrom(:final pool)) {
+        if (leasedNow[pool] case final leased?) return leased;
+      }
+    }
+    return null;
+  }
+
   /// Each [GoesAs] a request under [signIn] may be granted by, the one
   /// relying on no lease first.
   static List<GoesAs> _goesAsFor(
