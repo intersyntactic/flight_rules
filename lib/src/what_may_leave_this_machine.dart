@@ -6,20 +6,23 @@ import 'read_strictly.dart';
 /// A trajectory's rules: every way words can get off this machine, and what
 /// each may carry where.
 ///
-/// Files and programs on the machine need no rule: reading, writing and
-/// running a program carry nothing off it by themselves. A program can leave
-/// only through its own network, which [programsNetwork] decides. A model
-/// call or a web request only reads, yet carries the case's words away, so
-/// each is named here.
+/// Files need no rule, and which programs may run is [FlightRules]'s:
+/// reading, writing and running a program carry nothing off the machine by
+/// themselves. A program can leave only through its own network, which
+/// [programsNetwork] decides. A model
+/// call, a fetch or a web request carries the case's words away, so each is
+/// named here.
 final class WhatMayLeaveThisMachine {
   WhatMayLeaveThisMachine({
     required Iterable<ModelSignInName> modelSignInsCallsMayGoOutAs,
-    required Iterable<SiteAndSignIn> sitesTheWebDriverMayReach,
+    required Iterable<GrantToFetch> fetchesMayReach,
+    required Iterable<GrantToMakeWebRequests> webRequestsMayReach,
     required this.programsNetwork,
   }) : modelSignInsCallsMayGoOutAs = Set.unmodifiable(
          modelSignInsCallsMayGoOutAs,
        ),
-       sitesTheWebDriverMayReach = Set.unmodifiable(sitesTheWebDriverMayReach);
+       fetchesMayReach = Set.unmodifiable(fetchesMayReach),
+       webRequestsMayReach = Set.unmodifiable(webRequestsMayReach);
 
   /// [json] read back, strictly: a key it does not know, or a part that is
   /// not what it names, throws a [FormatException] naming the part. A key
@@ -31,7 +34,8 @@ final class WhatMayLeaveThisMachine {
   ]) {
     exactly(field, json, const {
       'modelSignInsCallsMayGoOutAs',
-      'sitesTheWebDriverMayReach',
+      'fetchesMayReach',
+      'webRequestsMayReach',
       'programsNetwork',
     });
     return WhatMayLeaveThisMachine(
@@ -40,10 +44,16 @@ final class WhatMayLeaveThisMachine {
             in json.list('modelSignInsCallsMayGoOutAs').indexed)
           decodeModelSignInName(name, '$field.modelSignInsCallsMayGoOutAs[$i]'),
       ],
-      sitesTheWebDriverMayReach: [
-        for (final (i, site)
-            in json.objects('sitesTheWebDriverMayReach').indexed)
-          SiteAndSignIn.fromJson(site, '$field.sitesTheWebDriverMayReach[$i]'),
+      fetchesMayReach: [
+        for (final (i, grant) in json.objects('fetchesMayReach').indexed)
+          GrantToFetch.fromJson(grant, '$field.fetchesMayReach[$i]'),
+      ],
+      webRequestsMayReach: [
+        for (final (i, grant) in json.objects('webRequestsMayReach').indexed)
+          GrantToMakeWebRequests.fromJson(
+            grant,
+            '$field.webRequestsMayReach[$i]',
+          ),
       ],
       programsNetwork: oneOf(
         ProgramsNetwork.values,
@@ -57,9 +67,12 @@ final class WhatMayLeaveThisMachine {
   /// name. The airlock makes the call; the loop holds no credential.
   final Set<ModelSignInName> modelSignInsCallsMayGoOutAs;
 
-  /// Each site the web driver may make a request to for this trajectory,
-  /// with the sign-in it goes as.
-  final Set<SiteAndSignIn> sitesTheWebDriverMayReach;
+  /// Where a fetch for this trajectory may read from, and who it goes as.
+  final Set<GrantToFetch> fetchesMayReach;
+
+  /// Where the web requests a tool builds for this trajectory may go, and
+  /// who they go as.
+  final Set<GrantToMakeWebRequests> webRequestsMayReach;
 
   final ProgramsNetwork programsNetwork;
 
@@ -67,45 +80,122 @@ final class WhatMayLeaveThisMachine {
   bool allowsModelCall(ModelSignInName signIn) =>
       modelSignInsCallsMayGoOutAs.contains(signIn);
 
-  /// The grant in [sitesTheWebDriverMayReach] that lets a web request to
-  /// [site] go as [signIn], or as nobody when it is null; null when none
-  /// does. [leasedNow] is each bot this trajectory holds a lease on right
-  /// now, by the pool it came from; [pooled] is every sign-in ever added to
-  /// any pool, whoever holds it, since a bot taken out of a pool must not
+  /// The grant in [fetchesMayReach] that lets a fetch from [path] on [site]
+  /// go as [signIn], or as nobody when it is null, with the prefix it was
+  /// granted under, for the request's `grantedPathPrefix`; null when none
+  /// does. [leasedNow] and [pooled] are as [webRequestsGrantFor] takes them.
+  ({GrantToFetch grant, PathPrefix grantedPathPrefix})? fetchGrantFor(
+    Origin site,
+    WebPath path,
+    SignIn? signIn, {
+    required Map<BotPool, SignIn> leasedNow,
+    required Set<SignIn> pooled,
+  }) {
+    for (final goesAs in _goesAsFor(signIn, leasedNow, pooled)) {
+      for (final grant in fetchesMayReach) {
+        if (grant.goesAs == goesAs && grant.from.covers(site, path)) {
+          return (grant: grant, grantedPathPrefix: grant.from.pathPrefix);
+        }
+      }
+    }
+    return null;
+  }
+
+  /// The grant in [webRequestsMayReach] that lets a web request to [path]
+  /// on [site] go as [signIn], or as nobody when it is null, with the
+  /// prefix it was granted under, for the request's `grantedPathPrefix`;
+  /// null when none does. Every request a tool builds is decided on its
+  /// own, and all of them must have a grant.
+  ///
+  /// [leasedNow] is each bot this trajectory holds a lease on right now, by
+  /// the pool it came from; [pooled] is every sign-in ever added to any
+  /// pool, whoever holds it, since a bot taken out of a pool must not
   /// become grantable by name while a lease on it may still run.
+  /// [replyEndpoint] is where replies to the event that started this
+  /// trajectory go, or null when no event did.
   ///
   /// A request under no sign-in matches only a [GoesAsNobody] grant, so a
-  /// grant to fetch a page anonymously never lets the trajectory make
+  /// grant to reach a site anonymously never lets the trajectory make
   /// requests there as a bot. One under a sign-in matches a
   /// [GoesAsBotLeasedFrom] grant whose pool's lease is that sign-in, or,
   /// for a sign-in in no pool, a grant of that sign-in. A pooled bot's
   /// sign-in is never granted by name, so no rules can let a trajectory
   /// post as a bot leased to another. When both match, the grant of the
   /// sign-in is returned, since it relies on no lease.
-  SiteAndSignIn? grantFor(
+  ({GrantToMakeWebRequests grant, PathPrefix grantedPathPrefix})?
+  webRequestsGrantFor(
     Origin site,
+    WebPath path,
     SignIn? signIn, {
     required Map<BotPool, SignIn> leasedNow,
     required Set<SignIn> pooled,
+    required AddressPrefix? replyEndpoint,
   }) {
-    final candidates = switch (signIn) {
-      null => [SiteAndSignIn(site, const GoesAsNobody())],
-      final SignIn signIn => [
-        if (!pooled.contains(signIn)) SiteAndSignIn(site, GoesAsSignIn(signIn)),
-        for (final MapEntry(key: pool, value: leased) in leasedNow.entries)
-          if (leased == signIn) SiteAndSignIn(site, GoesAsBotLeasedFrom(pool)),
-      ],
-    };
-    return candidates.where(sitesTheWebDriverMayReach.contains).firstOrNull;
+    for (final goesAs in _goesAsFor(signIn, leasedNow, pooled)) {
+      for (final grant in webRequestsMayReach) {
+        if (grant.goesAs != goesAs) continue;
+        final prefix = grant.to._prefixCovering(site, path, replyEndpoint);
+        if (prefix != null) return (grant: grant, grantedPathPrefix: prefix);
+      }
+    }
+    return null;
   }
+
+  /// The sign-in a reply to [replyEndpoint] can go as: one a
+  /// [ToOwnReplyEndpoint] grant on [replyEndpoint]'s origin goes as, by
+  /// name before by lease, as [webRequestsGrantFor] prefers, so every
+  /// request the loop builds under the endpoint as it is granted. Null when
+  /// none can. A reply grant under no sign-in is never chosen, since a
+  /// reply is posted as someone. [leasedNow] and [pooled] are as
+  /// [webRequestsGrantFor] takes them.
+  SignIn? signInForReply({
+    required AddressPrefix replyEndpoint,
+    required Map<BotPool, SignIn> leasedNow,
+    required Set<SignIn> pooled,
+  }) {
+    final replyGrantsGoAs = [
+      for (final grant in webRequestsMayReach)
+        if (grant.to case ToOwnReplyEndpoint(:final onOneOf)
+            when onOneOf.contains(replyEndpoint.origin))
+          grant.goesAs,
+    ];
+    for (final goesAs in replyGrantsGoAs) {
+      if (goesAs case GoesAsSignIn(:final signIn)
+          when !pooled.contains(signIn)) {
+        return signIn;
+      }
+    }
+    for (final goesAs in replyGrantsGoAs) {
+      if (goesAs case GoesAsBotLeasedFrom(:final pool)) {
+        if (leasedNow[pool] case final leased?) return leased;
+      }
+    }
+    return null;
+  }
+
+  /// Each [GoesAs] a request under [signIn] may be granted by, the one
+  /// relying on no lease first.
+  static List<GoesAs> _goesAsFor(
+    SignIn? signIn,
+    Map<BotPool, SignIn> leasedNow,
+    Set<SignIn> pooled,
+  ) => switch (signIn) {
+    null => const [GoesAsNobody()],
+    final SignIn signIn => [
+      if (!pooled.contains(signIn)) GoesAsSignIn(signIn),
+      for (final MapEntry(key: pool, value: leased) in leasedNow.entries)
+        if (leased == signIn) GoesAsBotLeasedFrom(pool),
+    ],
+  };
 
   JsonObject toJson() => JsonObject.of({
     'modelSignInsCallsMayGoOutAs': [
       for (final name in modelSignInsCallsMayGoOutAs)
         encodeModelSignInName(name),
     ],
-    'sitesTheWebDriverMayReach': [
-      for (final site in sitesTheWebDriverMayReach) site.toJson(),
+    'fetchesMayReach': [for (final grant in fetchesMayReach) grant.toJson()],
+    'webRequestsMayReach': [
+      for (final grant in webRequestsMayReach) grant.toJson(),
     ],
     'programsNetwork': programsNetwork.name,
   });
@@ -118,42 +208,193 @@ enum ProgramsNetwork {
   noNetworkOfTheirOwn,
 
   /// The suit shares this machine's network: a program can reach any site
-  /// itself. [WhatMayLeaveThisMachine.sitesTheWebDriverMayReach] then limits
-  /// only the web driver, not the trajectory.
+  /// itself. The web grants then limit only the web driver, not the
+  /// trajectory.
   sharesThisMachinesNetwork,
 }
 
-/// A site the web driver may reach, and the sign-in it goes as there: one
-/// grant, never the site alone, since every bot of a kind makes requests to
+/// A grant to fetch from the addresses under [from], going as [goesAs]: one
+/// grant, never the addresses alone, since every bot of a kind reads from
 /// the same sites.
-final class SiteAndSignIn {
-  const SiteAndSignIn(this.site, this.goesAs);
+final class GrantToFetch {
+  const GrantToFetch(this.from, this.goesAs);
 
   /// [json] read back, strictly, as [WhatMayLeaveThisMachine.fromJson]
   /// reads its parts.
-  static SiteAndSignIn fromJson(JsonObject json, String field) {
-    exactly(field, json, const {'site', 'goesAs'});
-    return SiteAndSignIn(
-      decodeOrigin(json.raw('site'), '$field.site'),
+  static GrantToFetch fromJson(JsonObject json, String field) {
+    exactly(field, json, const {'from', 'goesAs'});
+    return GrantToFetch(
+      _addressPrefixFromJson(json.object('from'), '$field.from'),
       GoesAs._fromJson(json.object('goesAs'), '$field.goesAs'),
     );
   }
 
-  final Origin site;
+  final AddressPrefix from;
   final GoesAs goesAs;
 
   @override
   bool operator ==(Object other) =>
-      other is SiteAndSignIn && other.site == site && other.goesAs == goesAs;
+      other is GrantToFetch && other.from == from && other.goesAs == goesAs;
 
   @override
-  int get hashCode => Object.hash(site, goesAs);
+  int get hashCode => Object.hash(from, goesAs);
 
-  JsonObject toJson() =>
-      JsonObject.of({'site': encodeOrigin(site), 'goesAs': goesAs._toJson()});
+  JsonObject toJson() => JsonObject.of({
+    'from': encodeAddressPrefix(from),
+    'goesAs': goesAs._toJson(),
+  });
 }
 
-/// Who a request to a granted site goes as: a [GoesAsSignIn], a
+/// A grant to make web requests [to] somewhere, going as [goesAs].
+final class GrantToMakeWebRequests {
+  const GrantToMakeWebRequests(this.to, this.goesAs);
+
+  /// [json] read back, strictly, as [WhatMayLeaveThisMachine.fromJson]
+  /// reads its parts.
+  static GrantToMakeWebRequests fromJson(JsonObject json, String field) {
+    exactly(field, json, const {'to', 'goesAs'});
+    return GrantToMakeWebRequests(
+      WhereWebRequestsGo._fromJson(json.object('to'), '$field.to'),
+      GoesAs._fromJson(json.object('goesAs'), '$field.goesAs'),
+    );
+  }
+
+  final WhereWebRequestsGo to;
+  final GoesAs goesAs;
+
+  @override
+  bool operator ==(Object other) =>
+      other is GrantToMakeWebRequests &&
+      other.to == to &&
+      other.goesAs == goesAs;
+
+  @override
+  int get hashCode => Object.hash(to, goesAs);
+
+  JsonObject toJson() =>
+      JsonObject.of({'to': to._toJson(), 'goesAs': goesAs._toJson()});
+}
+
+/// Where web requests may go: [ToAddressesUnder] a prefix the rules name,
+/// or [ToOwnReplyEndpoint], wherever replies to the event that started the
+/// trajectory go.
+sealed class WhereWebRequestsGo {
+  const WhereWebRequestsGo();
+
+  static WhereWebRequestsGo _fromJson(JsonObject json, String field) {
+    switch (oneOf(_WhereKind.values, json.string('kind'), '$field.kind')) {
+      case _WhereKind.addressesUnder:
+        exactly(field, json, const {'kind', 'prefix'});
+        return ToAddressesUnder(
+          _addressPrefixFromJson(json.object('prefix'), '$field.prefix'),
+        );
+      case _WhereKind.ownReplyEndpoint:
+        exactly(field, json, const {'kind', 'onOneOf'});
+        return ToOwnReplyEndpoint.of([
+              for (final (i, origin) in json.list('onOneOf').indexed)
+                decodeOrigin(origin, '$field.onOneOf[$i]'),
+            ]) ??
+            (throw FormatException('$field.onOneOf: names no origin'));
+    }
+  }
+
+  /// The path prefix under which a request to [path] on [site] goes here,
+  /// or null when it doesn't.
+  PathPrefix? _prefixCovering(
+    Origin site,
+    WebPath path,
+    AddressPrefix? replyEndpoint,
+  );
+
+  JsonObject _toJson();
+}
+
+/// Requests go to the addresses under [prefix].
+final class ToAddressesUnder extends WhereWebRequestsGo {
+  const ToAddressesUnder(this.prefix);
+
+  final AddressPrefix prefix;
+
+  @override
+  PathPrefix? _prefixCovering(
+    Origin site,
+    WebPath path,
+    AddressPrefix? replyEndpoint,
+  ) => prefix.covers(site, path) ? prefix.pathPrefix : null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ToAddressesUnder && other.prefix == prefix;
+
+  @override
+  int get hashCode => prefix.hashCode;
+
+  @override
+  JsonObject _toJson() => JsonObject.of({
+    'kind': _WhereKind.addressesUnder.name,
+    'prefix': encodeAddressPrefix(prefix),
+  });
+}
+
+/// Requests go under the reply endpoint of the event that started the
+/// trajectory, when that endpoint is on one of [onOneOf]. Rules are copied
+/// into every trajectory a mission starts, while each trajectory's
+/// conversation is its own, so a grant can't name the conversation. The
+/// endpoint comes from the inbound event, so the rules name the origins it
+/// may be on, never leaving them open.
+final class ToOwnReplyEndpoint extends WhereWebRequestsGo {
+  const ToOwnReplyEndpoint._(this.onOneOf);
+
+  /// The grant's destination, or null when [onOneOf] names no origin.
+  static ToOwnReplyEndpoint? of(Iterable<Origin> onOneOf) {
+    final origins = Set<Origin>.unmodifiable(onOneOf);
+    return origins.isEmpty ? null : ToOwnReplyEndpoint._(origins);
+  }
+
+  final Set<Origin> onOneOf;
+
+  @override
+  PathPrefix? _prefixCovering(
+    Origin site,
+    WebPath path,
+    AddressPrefix? replyEndpoint,
+  ) => switch (replyEndpoint) {
+    final endpoint?
+        when onOneOf.contains(endpoint.origin) && endpoint.covers(site, path) =>
+      endpoint.pathPrefix,
+    _ => null,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ToOwnReplyEndpoint &&
+      other.onOneOf.length == onOneOf.length &&
+      other.onOneOf.containsAll(onOneOf);
+
+  @override
+  int get hashCode => Object.hashAllUnordered(onOneOf);
+
+  @override
+  JsonObject _toJson() => JsonObject.of({
+    'kind': _WhereKind.ownReplyEndpoint.name,
+    'onOneOf': [for (final origin in onOneOf) encodeOrigin(origin)],
+  });
+}
+
+/// The tag a [WhereWebRequestsGo] carries on the wire.
+enum _WhereKind { addressesUnder, ownReplyEndpoint }
+
+/// [json] as an [AddressPrefix], read strictly: is_effects' reader skips a
+/// key it does not know.
+AddressPrefix _addressPrefixFromJson(JsonObject json, String field) {
+  exactly(field, json, const {'origin', 'pathPrefix'});
+  return AddressPrefix.of(
+    decodeOrigin(json.raw('origin'), '$field.origin'),
+    decodePathPrefix(json.raw('pathPrefix'), '$field.pathPrefix'),
+  );
+}
+
+/// Who a request to a granted address goes as: a [GoesAsSignIn], a
 /// [GoesAsBotLeasedFrom], or [GoesAsNobody]. Never null, so "no sign-in" cannot be read as "any
 /// sign-in", here or on the wire.
 sealed class GoesAs {
