@@ -10,7 +10,7 @@ environment:
 
 dependencies:
   checked_json: ^0.2.1
-  is_effects: ^0.13.0
+  is_effects: ^0.14.0
 
 dev_dependencies:
   lints: ^6.1.0
