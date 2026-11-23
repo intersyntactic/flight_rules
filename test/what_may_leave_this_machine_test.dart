@@ -16,15 +16,25 @@ void main() {
       AddressPrefix.of(origin, PathPrefix.parse(prefix)!);
 
   final driveAbc = under(graph, '/v1.0/drives/abc/');
-  final fetchDrive = GrantToFetch(driveAbc, GoesAsSignIn(bot));
-  final fetchDocs = GrantToFetch(under(docs, '/'), const GoesAsNobody());
+  final fetchDrive = GrantToFetch(
+    FromAddressesUnder(driveAbc),
+    GoesAsSignIn(bot),
+  );
+  final fetchDocs = GrantToFetch(
+    FromAddressesUnder(under(docs, '/')),
+    const GoesAsNobody(),
+  );
+  final folderGrant = GrantToFetch(
+    FromGraphFolder(GraphId.parse('b!d_1')!, GraphId.parse('01F')!),
+    GoesAsSignIn(bot),
+  );
   final toOwnReplies = GrantToMakeWebRequests(
     ToOwnReplyEndpoint.of([teams])!,
     GoesAsSignIn(bot),
   );
   final rules = WhatMayLeaveThisMachine(
     modelSignInsCallsMayGoOutAs: [claudeTeam],
-    fetchesMayReach: [fetchDrive, fetchDocs],
+    fetchesMayReach: [fetchDrive, fetchDocs, folderGrant],
     webRequestsMayReach: [toOwnReplies],
     programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
   );
@@ -91,7 +101,9 @@ void main() {
   test('a fetch grant never lets a web request through, nor the reverse', () {
     final fetchOnly = WhatMayLeaveThisMachine(
       modelSignInsCallsMayGoOutAs: [claudeTeam],
-      fetchesMayReach: [GrantToFetch(under(teams, '/'), GoesAsSignIn(bot))],
+      fetchesMayReach: [
+        GrantToFetch(FromAddressesUnder(under(teams, '/')), GoesAsSignIn(bot)),
+      ],
       webRequestsMayReach: const [],
       programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
     );
@@ -514,12 +526,121 @@ void main() {
     expect(rules.allowsModelCall(ModelSignInName.parse('other')!), isFalse);
   });
 
+  group('a Graph folder grant', () {
+    const folderAt = '/v1.0/drives/b!d_1/items/01F';
+    String? prefix(Origin site, String raw, [SignIn? signIn]) {
+      final granted = rules.fetchGrantFor(
+        site,
+        path(raw),
+        signIn ?? bot,
+        leasedNow: const {},
+        pooled: const {},
+      );
+      if (granted == null) return null;
+      expect(granted.grant, folderGrant);
+      return granted.grantedPathPrefix.value;
+    }
+
+    test("reads the folder's listing, with at most a \$select", () {
+      expect(prefix(graph, '$folderAt/children'), '$folderAt/');
+      expect(
+        prefix(
+          graph,
+          '$folderAt/children?\$select=name,size,lastModifiedDateTime,folder',
+        ),
+        '$folderAt/',
+      );
+      expect(prefix(graph, '$folderAt/children?%24select=name'), '$folderAt/');
+    });
+
+    test('reads a file in the folder by name, under its own prefix', () {
+      const name = 'Incident%20report%20%232.docx';
+      expect(prefix(graph, '$folderAt:/$name:/content'), '$folderAt:/$name:/');
+      // `%3A` is `:`, as Graph and PathPrefix both read it.
+      expect(
+        prefix(graph, '/v1.0/drives/b!d_1/items/01F%3A/a.docx%3A/content'),
+        isNotNull,
+      );
+    });
+
+    test('refuses every other route to a file', () {
+      for (final raw in [
+        // A file by its own id, which names no folder.
+        '/v1.0/drives/b!d_1/items/01FILE',
+        '/v1.0/drives/b!d_1/items/01FILE/content',
+        // By path from the root, or the same drive named another way.
+        '/v1.0/drives/b!d_1/root:/a.docx:/content',
+        '/v1.0/me/drive/items/01F/children',
+        '/v1.0/sites/s1/drive/items/01F/children',
+        '/beta/drives/b!d_1/items/01F/children',
+        // Another folder, another drive.
+        '/v1.0/drives/b!d_1/items/01G/children',
+        '/v1.0/drives/b!d_2/items/01F/children',
+        '/v1.0/drives/b!d_2/items/01F:/a.docx:/content',
+        // The folder itself, or more than its listing.
+        folderAt,
+        '$folderAt/children/01X',
+        '$folderAt/children?\$expand=children',
+        '$folderAt/children?\$select=name&\$expand=children',
+        '$folderAt/children?\$select=name,folder(\$expand)',
+        '$folderAt/children?\$filter=size%20gt%200',
+        // A file's metadata, or its content with a query.
+        '$folderAt:/a.docx:',
+        '$folderAt:/a.docx:/content?format=pdf',
+        // Names that could reach past the folder, which no OneDrive name
+        // has.
+        '$folderAt:/a%2Fb.docx:/content',
+        '$folderAt:/sub/a.docx:/content',
+        '$folderAt:/a%5Cb.docx:/content',
+        '$folderAt:/a%3Ab.docx:/content',
+        '$folderAt:/.:/content',
+        '$folderAt:/:/content',
+        '$folderAt:/a.docx/content',
+      ]) {
+        expect(prefix(graph, raw), isNull, reason: raw);
+      }
+      // These never become a path for a grant to see.
+      for (final raw in [
+        '$folderAt:/..:/content',
+        '$folderAt:/...:/content',
+        '$folderAt:/a%2fb.docx:/content',
+      ]) {
+        expect(WebPath.parse(raw), isNull, reason: raw);
+      }
+    });
+
+    test('reads only on Graph, and only as its sign-in', () {
+      expect(prefix(docs, '$folderAt/children'), isNull);
+      expect(
+        rules.fetchGrantFor(
+          graph,
+          path('$folderAt/children'),
+          null,
+          leasedNow: const {},
+          pooled: const {},
+        ),
+        isNull,
+      );
+      expect(
+        prefix(graph, '$folderAt/children', SignIn.parse('other-bot')),
+        isNull,
+      );
+    });
+
+    test('ids are one segment, spelled one way', () {
+      expect(GraphId.parse('b!3x9Q_-Z'), isNotNull);
+      for (final raw in ['', '01F/x', '01F:', 'b%21d', '01 F', '..']) {
+        expect(GraphId.parse(raw), isNull, reason: raw);
+      }
+    });
+  });
+
   test('a grant under no sign-in is not a grant under a sign-in', () {
     // By ==, not only by hash, so a set that compared grants by address
     // alone would still be caught.
     expect(const GoesAsNobody() == GoesAsSignIn(bot), isFalse);
     expect(GoesAsSignIn(bot) == const GoesAsNobody(), isFalse);
-    final docsRoot = under(docs, '/');
+    final docsRoot = FromAddressesUnder(under(docs, '/'));
     expect(
       GrantToFetch(docsRoot, const GoesAsNobody()) ==
           GrantToFetch(docsRoot, GoesAsSignIn(bot)),
@@ -536,7 +657,12 @@ void main() {
     final good = rules.toJson().asUncheckedMap();
     final from = {'origin': 'https://docs.example.com', 'pathPrefix': '/'};
     final nobody = {'kind': 'nobody'};
-    final fetchGrant = {'from': from, 'goesAs': nobody};
+    Map<String, Object?> fromUnder(Object? prefix) => {
+      'kind': 'addressesUnder',
+      'prefix': prefix,
+    };
+    final folder = {'kind': 'graphFolder', 'drive': 'b!d_1', 'folder': '01F'};
+    final fetchGrant = {'from': fromUnder(from), 'goesAs': nobody};
     final requestGrant = {
       'to': {'kind': 'addressesUnder', 'prefix': from},
       'goesAs': nobody,
@@ -594,31 +720,73 @@ void main() {
         },
         {...fetchGrant, 'from': 'https://docs.example.com'},
         {...fetchGrant, 'from': null},
+        // 0.4.0's bare prefix, with no kind.
+        {...fetchGrant, 'from': from},
         {
           ...fetchGrant,
-          'from': {...from, 'pathPrefix': '/guide'},
+          'from': {...fromUnder(from), 'kind': 'anywhere'},
         },
         {
           ...fetchGrant,
-          'from': {...from, 'pathPrefix': '/guide?x=1/'},
+          'from': {...fromUnder(from), 'folder': '01F'},
+        },
+        {...fetchGrant, 'from': fromUnder('https://docs.example.com')},
+        {
+          ...fetchGrant,
+          'from': fromUnder({...from, 'pathPrefix': '/guide'}),
         },
         {
           ...fetchGrant,
-          'from': {...from, 'pathPrefix': '/a/%2e%2e/'},
+          'from': fromUnder({...from, 'pathPrefix': '/guide?x=1/'}),
         },
         {
           ...fetchGrant,
-          'from': {'origin': 'https://docs.example.com'},
+          'from': fromUnder({...from, 'pathPrefix': '/a/%2e%2e/'}),
         },
         {
           ...fetchGrant,
-          'from': {...from, 'method': 'GET'},
+          'from': fromUnder({'origin': 'https://docs.example.com'}),
         },
         {
           ...fetchGrant,
-          'from': {...from, 'origin': 'https://docs.example.com/path'},
+          'from': fromUnder({...from, 'method': 'GET'}),
+        },
+        {
+          ...fetchGrant,
+          'from': fromUnder({
+            ...from,
+            'origin': 'https://docs.example.com/path',
+          }),
         },
         {...fetchGrant, 'path': '/'},
+        {
+          ...fetchGrant,
+          'from': {'kind': 'graphFolder', 'drive': 'b!d_1'},
+        },
+        {
+          ...fetchGrant,
+          'from': {...folder, 'prefix': from},
+        },
+        {
+          ...fetchGrant,
+          'from': {...folder, 'folder': ''},
+        },
+        {
+          ...fetchGrant,
+          'from': {...folder, 'folder': '01F/children'},
+        },
+        {
+          ...fetchGrant,
+          'from': {...folder, 'folder': '01F:'},
+        },
+        {
+          ...fetchGrant,
+          'from': {...folder, 'drive': 'b%21d_1'},
+        },
+        {
+          ...fetchGrant,
+          'from': {...folder, 'drive': 1},
+        },
       ])
         {
           ...good,

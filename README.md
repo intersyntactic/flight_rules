@@ -39,8 +39,12 @@ final rules = WhatMayLeaveThisMachine(
   modelSignInsCallsMayGoOutAs: [ModelSignInName.parse('claude-team')!],
   fetchesMayReach: [
     GrantToFetch(
-      AddressPrefix.of(Origin.parse('https://graph.microsoft.com')!,
-          PathPrefix.parse('/v1.0/drives/abc/')!),
+      FromAddressesUnder(AddressPrefix.of(Origin.parse('https://docs.example.com')!,
+          PathPrefix.parse('/guides/')!)),
+      const GoesAsNobody(),
+    ),
+    GrantToFetch(
+      FromGraphFolder(GraphId.parse('b!abc')!, GraphId.parse('01F')!),
       GoesAsBotLeasedFrom(BotPool.parse('teams-agents')!),
     ),
   ],
@@ -53,12 +57,13 @@ final rules = WhatMayLeaveThisMachine(
   programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
 );
 
-rules.fetchGrantFor(graph, WebPath.parse('/v1.0/drives/abc/items')!,
+rules.fetchGrantFor(graph,
+    WebPath.parse('/v1.0/drives/b!abc/items/01F:/Report.docx:/content')!,
     researcher1, leasedNow: {teamsAgents: researcher1}, pooled: pooled);
-    // the fetch grant
-rules.fetchGrantFor(graph, WebPath.parse('/v1.0/drives/xyz/items')!,
+    // the folder grant
+rules.fetchGrantFor(graph, WebPath.parse('/v1.0/drives/b!abc/items/01X')!,
     researcher1, leasedNow: {teamsAgents: researcher1}, pooled: pooled);
-    // null: another drive
+    // null: a file by its id, which names no folder
 rules.webRequestsGrantFor(teams, replyPath, researcher1,
     leasedNow: {teamsAgents: researcher1}, pooled: pooled,
     replyEndpoint: startEntry.replyEndpoint);
@@ -80,11 +85,26 @@ new, can let a trajectory post as a bot leased to another.
   here.
 - `fetchesMayReach` and `webRequestsMayReach`: kept apart, so a grant to
   make requests to a site never lets the trajectory read from it, and the
-  reverse. Each grant is an address prefix *and* who the request goes as: a
+  reverse. Each grant is where *and* who the request goes as: a
   sign-in, the bot this trajectory leases from a pool, or nobody. An address
   is never granted alone, and a path reaches under a prefix only when it
   goes deeper than it, so `/v1.0/drives/abc/` reaches neither
   `/v1.0/drives/abc` nor `/v1.0/drives/abcdef/`. `/` is the whole site.
+- `FromGraphFolder(drive, folder)`: a fetch grant for one folder of a
+  Microsoft Graph drive, which no prefix can say. Graph names a file in a
+  folder as `{folder}:/{name}:`, a segment that isn't `{folder}`, and a
+  file read by its own id doesn't name its folder at all. So the grant
+  allows exactly two reads on `https://graph.microsoft.com`, and refuses
+  every other route Graph has to a file rather than checking it: the
+  listing, `/v1.0/drives/{drive}/items/{folder}/children` with at most a
+  `$select` (an `$expand` could list subfolders), and a file by name,
+  `/v1.0/drives/{drive}/items/{folder}:/{name}:/content`, with no query.
+  A name with a `/`, `\` or `:` in it, escaped or not, or of only dots, is
+  refused; no OneDrive name has one. Its `grantedPathPrefix` is the
+  request's own, `…/items/{folder}/` or `…/items/{folder}:/{name}:/`, so a
+  redirect on Graph itself stays on that read. The redirect `/content`
+  answers with goes to SharePoint, another site, which the web driver
+  follows only when the sign-in's credential lists it.
 - `ToOwnReplyEndpoint`: rules are copied into every trajectory a mission
   starts, while each trajectory's conversation is its own, so a grant to
   reply names the role, and the airlock passes in the endpoint from the
