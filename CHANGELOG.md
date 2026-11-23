@@ -1,7 +1,6 @@
 ## 0.5.0
 
-- **Breaking:** `GrantToFetch.from` is a `WhereFetchesReadFrom`: `FromAddressesUnder(prefix)`, what an `AddressPrefix` granted before, or `FromGraphFolder(drive, folder)`, one folder of a Microsoft Graph drive. A folder grant allows only the folder's listing, `/v1.0/drives/{drive}/items/{folder}/children` with at most a `$select`, and a file in it by name, `/v1.0/drives/{drive}/items/{folder}:/{name}:/content`, and refuses a name with a `/`, `\` or `:` or of only dots. Its `grantedPathPrefix` is the request's own. On the wire `from` carries a `kind`, `addressesUnder` with a `prefix` or `graphFolder` with a `drive` and `folder`, so 0.4.0's rules are not read.
-- `GraphId`: a Graph drive or item id, one path segment of letters, digits, `!`, `-` and `_`.
+- **Breaking:** `GrantToFetch.from` is a `WhereFetchesReadFrom`: `FromAddressesUnder(prefix)`, what an `AddressPrefix` granted before, or `FromPathsMatching.of(origin, patterns)`, only the paths one of its `PathPattern`s matches on `origin`. A pattern such as `/drives/D/items/F:/{name}:/content` spells its segments: literals, compared decoded, and `{name}`, one segment that is not empty, has no `/`, `\` or `:` once decoded and is not only dots, with an optional fixed suffix. There is no wildcard and no "any depth". A pattern names at least two segments, starts with a literal, and its query may carry only the `QueryOptionName`s it lists, each once, each with a comma-separated list of words. A read is granted under its own path less its last segment. On the wire `from` carries a `kind`: `addressesUnder` with a `prefix`, or `pathsMatching` with an `origin` and `patterns`, each `{"path": …, "optionsTakingWordLists": […]}`. So 0.4.0's rules are not read.
 
 ## 0.4.0
 

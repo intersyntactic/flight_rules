@@ -24,8 +24,16 @@ void main() {
     FromAddressesUnder(under(docs, '/')),
     const GoesAsNobody(),
   );
+  // One folder of a Graph drive, as documents_module reads it: the folder's
+  // listing, and a file in it by name.
   final folderGrant = GrantToFetch(
-    FromGraphFolder(GraphId.parse('b!d_1')!, GraphId.parse('01F')!),
+    FromPathsMatching.of(graph, [
+      PathPattern.parse(
+        '/v1.0/drives/b!d_1/items/01F/children',
+        optionsTakingWordLists: [QueryOptionName.parse(r'$select')!],
+      )!,
+      PathPattern.parse('/v1.0/drives/b!d_1/items/01F:/{name}:/content')!,
+    ])!,
     GoesAsSignIn(bot),
   );
   final toOwnReplies = GrantToMakeWebRequests(
@@ -526,7 +534,7 @@ void main() {
     expect(rules.allowsModelCall(ModelSignInName.parse('other')!), isFalse);
   });
 
-  group('a Graph folder grant', () {
+  group("a Graph folder's patterns", () {
     const folderAt = '/v1.0/drives/b!d_1/items/01F';
     String? prefix(Origin site, String raw, [SignIn? signIn]) {
       final granted = rules.fetchGrantFor(
@@ -626,12 +634,79 @@ void main() {
         isNull,
       );
     });
+  });
 
-    test('ids are one segment, spelled one way', () {
-      expect(GraphId.parse('b!3x9Q_-Z'), isNotNull);
-      for (final raw in ['', '01F/x', '01F:', 'b%21d', '01 F', '..']) {
-        expect(GraphId.parse(raw), isNull, reason: raw);
+  group('a path pattern', () {
+    test('spells its segments exactly, with no wildcard or any depth', () {
+      for (final raw in [
+        '/a/{name}',
+        '/a/{name}:',
+        '/a/{name}%3A/b',
+        '/v1.0/drives/b!d/items/01F:/{name}:/content',
+      ]) {
+        expect(PathPattern.parse(raw)?.path, raw);
       }
+      for (final raw in [
+        '',
+        'a/b',
+        // One segment would grant its reads under the whole site.
+        '/a',
+        '/{name}/a',
+        '/a/',
+        '/a//b',
+        '/a/.',
+        '/a/..',
+        '/a/b?x=1',
+        '/a/x{name}',
+        '/a/{nam}',
+        '/a/{name}{name}',
+        '/a/*',
+        '/a/b%2Fc',
+        '/a/b%2fc',
+      ]) {
+        expect(PathPattern.parse(raw), isNull, reason: raw);
+      }
+    });
+
+    test('compares literals decoded, and options as a set', () {
+      expect(PathPattern.parse('/a/b:'), PathPattern.parse('/a/b%3A'));
+      expect(PathPattern.parse('/a/b'), isNot(PathPattern.parse('/a/{name}')));
+      final select = QueryOptionName.parse(r'$select')!;
+      expect(
+        PathPattern.parse('/a/b', optionsTakingWordLists: [select]),
+        isNot(PathPattern.parse('/a/b')),
+      );
+    });
+
+    test('a query option carries words, once each', () {
+      final pattern = PathPattern.parse(
+        '/a/b',
+        optionsTakingWordLists: [
+          QueryOptionName.parse(r'$select')!,
+          QueryOptionName.parse('fields')!,
+        ],
+      )!;
+      String? prefix(String raw) => pattern.prefixMatching(path(raw))?.value;
+      expect(prefix('/a/b'), '/a/');
+      expect(prefix(r'/a/b?$select=name&fields=x,y'), '/a/');
+      for (final raw in [
+        '/a/b?',
+        r'/a/b?$select',
+        r'/a/b?$select=',
+        r'/a/b?$select=a&$select=b',
+        r'/a/b?$select=a,',
+        r'/a/b?$select=a%20b',
+        '/a/b?other=a',
+      ]) {
+        expect(prefix(raw), isNull, reason: raw);
+      }
+      for (final raw in ['', 'select\$', r'$$a', 'a-b', r'$']) {
+        expect(QueryOptionName.parse(raw), isNull, reason: raw);
+      }
+    });
+
+    test('a grant names at least one pattern', () {
+      expect(FromPathsMatching.of(graph, []), isNull);
     });
   });
 
@@ -661,7 +736,15 @@ void main() {
       'kind': 'addressesUnder',
       'prefix': prefix,
     };
-    final folder = {'kind': 'graphFolder', 'drive': 'b!d_1', 'folder': '01F'};
+    final pattern = {
+      'path': '/a/{name}',
+      'optionsTakingWordLists': <Object?>[],
+    };
+    final matching = {
+      'kind': 'pathsMatching',
+      'origin': 'https://docs.example.com',
+      'patterns': [pattern],
+    };
     final fetchGrant = {'from': fromUnder(from), 'goesAs': nobody};
     final requestGrant = {
       'to': {'kind': 'addressesUnder', 'prefix': from},
@@ -759,34 +842,45 @@ void main() {
           }),
         },
         {...fetchGrant, 'path': '/'},
-        {
-          ...fetchGrant,
-          'from': {'kind': 'graphFolder', 'drive': 'b!d_1'},
-        },
-        {
-          ...fetchGrant,
-          'from': {...folder, 'prefix': from},
-        },
-        {
-          ...fetchGrant,
-          'from': {...folder, 'folder': ''},
-        },
-        {
-          ...fetchGrant,
-          'from': {...folder, 'folder': '01F/children'},
-        },
-        {
-          ...fetchGrant,
-          'from': {...folder, 'folder': '01F:'},
-        },
-        {
-          ...fetchGrant,
-          'from': {...folder, 'drive': 'b%21d_1'},
-        },
-        {
-          ...fetchGrant,
-          'from': {...folder, 'drive': 1},
-        },
+        for (final from in <Object?>[
+          {'kind': 'pathsMatching', 'origin': 'https://docs.example.com'},
+          {...matching, 'prefix': from},
+          {...matching, 'origin': 'https://docs.example.com/a'},
+          {...matching, 'patterns': const <Object?>[]},
+          {...matching, 'patterns': '/a/{name}'},
+          {
+            ...matching,
+            'patterns': [
+              {'path': '/a/{name}'},
+            ],
+          },
+          {
+            ...matching,
+            'patterns': [
+              {...pattern, 'any': true},
+            ],
+          },
+          for (final path in <Object?>['/a', '/{name}/a', '/a/*', 1, null])
+            {
+              ...matching,
+              'patterns': [
+                {...pattern, 'path': path},
+              ],
+            },
+          for (final options in <Object?>[
+            r'$select',
+            [r'$select=a'],
+            [1],
+            [null],
+          ])
+            {
+              ...matching,
+              'patterns': [
+                {...pattern, 'optionsTakingWordLists': options},
+              ],
+            },
+        ])
+          {...fetchGrant, 'from': from},
       ])
         {
           ...good,

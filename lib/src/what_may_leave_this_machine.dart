@@ -1,6 +1,7 @@
 import 'package:checked_json/checked_json.dart';
 import 'package:is_effects/is_effects.dart';
 
+import 'path_pattern.dart';
 import 'read_strictly.dart';
 
 /// A trajectory's rules: every way words can get off this machine, and what
@@ -243,7 +244,7 @@ final class GrantToFetch {
 }
 
 /// Where fetches may read from: [FromAddressesUnder] a prefix the rules
-/// name, or [FromGraphFolder], one folder of a Microsoft Graph drive.
+/// name, or [FromPathsMatching], only the paths the rules' patterns spell.
 sealed class WhereFetchesReadFrom {
   const WhereFetchesReadFrom();
 
@@ -254,12 +255,16 @@ sealed class WhereFetchesReadFrom {
         return FromAddressesUnder(
           _addressPrefixFromJson(json.object('prefix'), '$field.prefix'),
         );
-      case _FromKind.graphFolder:
-        exactly(field, json, const {'kind', 'drive', 'folder'});
-        return FromGraphFolder(
-          _graphIdFromJson(json.string('drive'), '$field.drive'),
-          _graphIdFromJson(json.string('folder'), '$field.folder'),
-        );
+      case _FromKind.pathsMatching:
+        exactly(field, json, const {'kind', 'origin', 'patterns'});
+        return FromPathsMatching.of(
+              decodeOrigin(json.raw('origin'), '$field.origin'),
+              [
+                for (final (i, pattern) in json.objects('patterns').indexed)
+                  _pathPatternFromJson(pattern, '$field.patterns[$i]'),
+              ],
+            ) ??
+            (throw FormatException('$field.patterns: names no pattern'));
     }
   }
 
@@ -294,132 +299,81 @@ final class FromAddressesUnder extends WhereFetchesReadFrom {
   });
 }
 
-/// Fetches read the files in [folder] of [drive] on Microsoft Graph, and
-/// nothing else: its listing, `/v1.0/drives/{drive}/items/{folder}/children`
-/// with at most a `$select`, and a file in it by name,
-/// `/v1.0/drives/{drive}/items/{folder}:/{name}:/content`.
+/// Fetches read from [origin], only the paths one of [patterns] matches.
 ///
-/// A path prefix can't say this. Graph names a file in a folder as
-/// `{folder}:`, a segment that isn't `{folder}`, and a file read by its own
-/// id doesn't name its folder at all, so every other route Graph has to a
-/// file is refused rather than checked. A name that could reach past the
-/// folder (a `/`, `\` or `:` in it, or only dots) is refused too; no
-/// OneDrive name has one.
-final class FromGraphFolder extends WhereFetchesReadFrom {
-  const FromGraphFolder(this.drive, this.folder);
+/// For a site where a prefix can't bound a read: one that names a thing in
+/// a folder by a segment that isn't the folder's, or a thing by an id that
+/// names no folder at all. The patterns spell the routes a read may take,
+/// and every other route is refused rather than checked.
+final class FromPathsMatching extends WhereFetchesReadFrom {
+  const FromPathsMatching._(this.origin, this.patterns);
 
-  final GraphId drive;
-  final GraphId folder;
+  /// The grant's source, or null when [patterns] names none.
+  static FromPathsMatching? of(Origin origin, Iterable<PathPattern> patterns) {
+    final all = Set<PathPattern>.unmodifiable(patterns);
+    return all.isEmpty ? null : FromPathsMatching._(origin, all);
+  }
 
-  /// Each segment is compared decoded, as is_effects' [PathPrefix] compares
-  /// them canonically, so `{folder}%3A` is `{folder}:`.
+  final Origin origin;
+  final Set<PathPattern> patterns;
+
   @override
   PathPrefix? _prefixCovering(Origin site, WebPath path) {
-    if (site != _graph) return null;
-    final queryAt = path.value.indexOf('?');
-    final raw = queryAt < 0 ? path.value : path.value.substring(0, queryAt);
-    final query = queryAt < 0 ? null : path.value.substring(queryAt + 1);
-    final segments = _decodedSegments(raw);
-    final folderAt = '/v1.0/drives/${drive.value}/items/${folder.value}';
-    switch (segments) {
-      case ['v1.0', 'drives', final d, 'items', final f, 'children']
-          when d == drive.value &&
-              f == folder.value &&
-              (query == null || _isSelectOnly(query)):
-        return PathPrefix.parse('$folderAt/');
-      case ['v1.0', 'drives', final d, 'items', final f, final name, 'content']
-          when query == null &&
-              d == drive.value &&
-              f == '${folder.value}:' &&
-              _isFileNameAndColon(name):
-        return PathPrefix.parse('$folderAt:/${raw.split('/')[6]}/');
-      default:
-        return null;
+    if (site != origin) return null;
+    for (final pattern in patterns) {
+      if (pattern.prefixMatching(path) case final prefix?) return prefix;
     }
+    return null;
   }
 
   @override
   bool operator ==(Object other) =>
-      other is FromGraphFolder &&
-      other.drive == drive &&
-      other.folder == folder;
+      other is FromPathsMatching &&
+      other.origin == origin &&
+      other.patterns.length == patterns.length &&
+      other.patterns.containsAll(patterns);
 
   @override
-  int get hashCode => Object.hash(drive, folder);
+  int get hashCode => Object.hash(origin, Object.hashAllUnordered(patterns));
 
   @override
   JsonObject _toJson() => JsonObject.of({
-    'kind': _FromKind.graphFolder.name,
-    'drive': drive.value,
-    'folder': folder.value,
+    'kind': _FromKind.pathsMatching.name,
+    'origin': encodeOrigin(origin),
+    'patterns': [
+      for (final pattern in patterns)
+        {
+          'path': pattern.path,
+          'optionsTakingWordLists': [
+            for (final option in pattern.optionsTakingWordLists) option.value,
+          ],
+        },
+    ],
   });
 }
 
-final _graph = Origin.parse('https://graph.microsoft.com')!;
-
-/// [raw]'s segments after its leading `/`, each decoded, or null when one
-/// isn't UTF-8. [raw] is from a [WebPath], so every escape in it is well
-/// formed.
-List<String>? _decodedSegments(String raw) {
-  if (!raw.startsWith('/')) return null;
-  try {
-    return [
-      for (final s in raw.substring(1).split('/')) Uri.decodeComponent(s),
-    ];
-  } on FormatException {
-    return null;
-  }
-}
-
-/// Whether [query] asks only which fields to return: a `$select` listing
-/// names. Another query option, such as `$expand=children`, could list
-/// what lies below the folder.
-bool _isSelectOnly(String query) {
-  try {
-    return RegExp(r'^\$select=[A-Za-z]+(,[A-Za-z]+)*$')
-        .hasMatch(Uri.decodeQueryComponent(query));
-  } on FormatException {
-    return false;
-  }
-}
-
-/// Whether [segment], decoded, is a file's name and the `:` that ends it.
-bool _isFileNameAndColon(String segment) {
-  if (!segment.endsWith(':')) return false;
-  final name = segment.substring(0, segment.length - 1);
-  return name.isNotEmpty &&
-      !name.contains(RegExp(r'[/\\:]')) &&
-      !RegExp(r'^\.+$').hasMatch(name);
+/// [json] as a [PathPattern], read strictly.
+PathPattern _pathPatternFromJson(JsonObject json, String field) {
+  exactly(field, json, const {'path', 'optionsTakingWordLists'});
+  final options = [
+    for (final (i, raw) in json.list('optionsTakingWordLists').indexed)
+      switch (raw) {
+            final String name? => QueryOptionName.parse(name),
+            _ => null,
+          } ??
+          (throw FormatException(
+            '$field.optionsTakingWordLists[$i]: not a query option name',
+          )),
+  ];
+  return PathPattern.parse(
+        json.string('path'),
+        optionsTakingWordLists: options,
+      ) ??
+      (throw FormatException('$field.path: not a path pattern'));
 }
 
 /// The tag a [WhereFetchesReadFrom] carries on the wire.
-enum _FromKind { addressesUnder, graphFolder }
-
-/// A Microsoft Graph drive or item id, such as `b!3x9Q…` or
-/// `01BYE5RZ6QN3…`: letters, digits, `!`, `-` and `_`, so it is always one
-/// path segment, spelled one way.
-final class GraphId {
-  const GraphId._(this.value);
-
-  /// [raw] as an id, or null when it has any other character or none.
-  static GraphId? parse(String raw) =>
-      RegExp(r'^[A-Za-z0-9!_-]+$').hasMatch(raw) ? GraphId._(raw) : null;
-
-  final String value;
-
-  @override
-  bool operator ==(Object other) => other is GraphId && other.value == value;
-
-  @override
-  int get hashCode => value.hashCode;
-
-  @override
-  String toString() => value;
-}
-
-GraphId _graphIdFromJson(String raw, String field) =>
-    GraphId.parse(raw) ??
-    (throw FormatException('$field: not a Graph id: $raw'));
+enum _FromKind { addressesUnder, pathsMatching }
 
 /// A grant to make web requests [to] somewhere, going as [goesAs].
 final class GrantToMakeWebRequests {

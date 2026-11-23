@@ -43,8 +43,14 @@ final rules = WhatMayLeaveThisMachine(
           PathPrefix.parse('/guides/')!)),
       const GoesAsNobody(),
     ),
+    // One folder of a Microsoft Graph drive: its listing, and a file in it
+    // by name.
     GrantToFetch(
-      FromGraphFolder(GraphId.parse('b!abc')!, GraphId.parse('01F')!),
+      FromPathsMatching.of(Origin.parse('https://graph.microsoft.com')!, [
+        PathPattern.parse('/v1.0/drives/b!abc/items/01F/children',
+            optionsTakingWordLists: [QueryOptionName.parse(r'$select')!])!,
+        PathPattern.parse('/v1.0/drives/b!abc/items/01F:/{name}:/content')!,
+      ])!,
       GoesAsBotLeasedFrom(BotPool.parse('teams-agents')!),
     ),
   ],
@@ -90,21 +96,22 @@ new, can let a trajectory post as a bot leased to another.
   is never granted alone, and a path reaches under a prefix only when it
   goes deeper than it, so `/v1.0/drives/abc/` reaches neither
   `/v1.0/drives/abc` nor `/v1.0/drives/abcdef/`. `/` is the whole site.
-- `FromGraphFolder(drive, folder)`: a fetch grant for one folder of a
-  Microsoft Graph drive, which no prefix can say. Graph names a file in a
+- `FromPathsMatching.of(origin, patterns)`: a fetch grant for a site where
+  no prefix can bound a read. Microsoft Graph, for one, names a file in a
   folder as `{folder}:/{name}:`, a segment that isn't `{folder}`, and a
-  file read by its own id doesn't name its folder at all. So the grant
-  allows exactly two reads on `https://graph.microsoft.com`, and refuses
-  every other route Graph has to a file rather than checking it: the
-  listing, `/v1.0/drives/{drive}/items/{folder}/children` with at most a
-  `$select` (an `$expand` could list subfolders), and a file by name,
-  `/v1.0/drives/{drive}/items/{folder}:/{name}:/content`, with no query.
-  A name with a `/`, `\` or `:` in it, escaped or not, or of only dots, is
-  refused; no OneDrive name has one. Its `grantedPathPrefix` is the
-  request's own, `…/items/{folder}/` or `…/items/{folder}:/{name}:/`, so a
-  redirect on Graph itself stays on that read. The redirect `/content`
-  answers with goes to SharePoint, another site, which the web driver
-  follows only when the sign-in's credential lists it.
+  file read by its own id doesn't name its folder at all. A `PathPattern`
+  spells one route a read may take, and every other route is refused
+  rather than checked. Each segment is a literal, compared decoded as a
+  prefix compares it, or `{name}`: one segment naming one thing, never
+  empty, never with a `/`, `\` or `:` once decoded, never only dots, and
+  optionally followed by a fixed suffix, as in `{name}:`. There is no
+  wildcard and no "any depth"; a literal can't hold a `*`, so no pattern
+  reads as one. A pattern names at least two segments and starts with a
+  literal. Its query may carry only the options it lists, each once and
+  each with a comma-separated list of words, so `$select=name,size` can
+  narrow a listing and `$expand=children` can't widen it. A read is
+  granted under its own path less its last segment, so a redirect on the
+  same site stays on that read.
 - `ToOwnReplyEndpoint`: rules are copied into every trajectory a mission
   starts, while each trajectory's conversation is its own, so a grant to
   reply names the role, and the airlock passes in the endpoint from the
