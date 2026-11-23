@@ -93,9 +93,9 @@ final class WhatMayLeaveThisMachine {
   }) {
     for (final goesAs in _goesAsFor(signIn, leasedNow, pooled)) {
       for (final grant in fetchesMayReach) {
-        if (grant.goesAs == goesAs && grant.from.covers(site, path)) {
-          return (grant: grant, grantedPathPrefix: grant.from.pathPrefix);
-        }
+        if (grant.goesAs != goesAs) continue;
+        final prefix = grant.from._prefixCovering(site, path);
+        if (prefix != null) return (grant: grant, grantedPathPrefix: prefix);
       }
     }
     return null;
@@ -213,9 +213,8 @@ enum ProgramsNetwork {
   sharesThisMachinesNetwork,
 }
 
-/// A grant to fetch from the addresses under [from], going as [goesAs]: one
-/// grant, never the addresses alone, since every bot of a kind reads from
-/// the same sites.
+/// A grant to fetch [from] somewhere, going as [goesAs]: one grant, never
+/// the addresses alone, since every bot of a kind reads from the same sites.
 final class GrantToFetch {
   const GrantToFetch(this.from, this.goesAs);
 
@@ -224,12 +223,12 @@ final class GrantToFetch {
   static GrantToFetch fromJson(JsonObject json, String field) {
     exactly(field, json, const {'from', 'goesAs'});
     return GrantToFetch(
-      _addressPrefixFromJson(json.object('from'), '$field.from'),
+      WhereFetchesReadFrom._fromJson(json.object('from'), '$field.from'),
       GoesAs._fromJson(json.object('goesAs'), '$field.goesAs'),
     );
   }
 
-  final AddressPrefix from;
+  final WhereFetchesReadFrom from;
   final GoesAs goesAs;
 
   @override
@@ -239,11 +238,188 @@ final class GrantToFetch {
   @override
   int get hashCode => Object.hash(from, goesAs);
 
-  JsonObject toJson() => JsonObject.of({
-    'from': encodeAddressPrefix(from),
-    'goesAs': goesAs._toJson(),
+  JsonObject toJson() =>
+      JsonObject.of({'from': from._toJson(), 'goesAs': goesAs._toJson()});
+}
+
+/// Where fetches may read from: [FromAddressesUnder] a prefix the rules
+/// name, or [FromGraphFolder], one folder of a Microsoft Graph drive.
+sealed class WhereFetchesReadFrom {
+  const WhereFetchesReadFrom();
+
+  static WhereFetchesReadFrom _fromJson(JsonObject json, String field) {
+    switch (oneOf(_FromKind.values, json.string('kind'), '$field.kind')) {
+      case _FromKind.addressesUnder:
+        exactly(field, json, const {'kind', 'prefix'});
+        return FromAddressesUnder(
+          _addressPrefixFromJson(json.object('prefix'), '$field.prefix'),
+        );
+      case _FromKind.graphFolder:
+        exactly(field, json, const {'kind', 'drive', 'folder'});
+        return FromGraphFolder(
+          _graphIdFromJson(json.string('drive'), '$field.drive'),
+          _graphIdFromJson(json.string('folder'), '$field.folder'),
+        );
+    }
+  }
+
+  /// The path prefix under which a fetch of [path] on [site] reads from
+  /// here, or null when it doesn't.
+  PathPrefix? _prefixCovering(Origin site, WebPath path);
+
+  JsonObject _toJson();
+}
+
+/// Fetches read from the addresses under [prefix].
+final class FromAddressesUnder extends WhereFetchesReadFrom {
+  const FromAddressesUnder(this.prefix);
+
+  final AddressPrefix prefix;
+
+  @override
+  PathPrefix? _prefixCovering(Origin site, WebPath path) =>
+      prefix.covers(site, path) ? prefix.pathPrefix : null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FromAddressesUnder && other.prefix == prefix;
+
+  @override
+  int get hashCode => prefix.hashCode;
+
+  @override
+  JsonObject _toJson() => JsonObject.of({
+    'kind': _FromKind.addressesUnder.name,
+    'prefix': encodeAddressPrefix(prefix),
   });
 }
+
+/// Fetches read the files in [folder] of [drive] on Microsoft Graph, and
+/// nothing else: its listing, `/v1.0/drives/{drive}/items/{folder}/children`
+/// with at most a `$select`, and a file in it by name,
+/// `/v1.0/drives/{drive}/items/{folder}:/{name}:/content`.
+///
+/// A path prefix can't say this. Graph names a file in a folder as
+/// `{folder}:`, a segment that isn't `{folder}`, and a file read by its own
+/// id doesn't name its folder at all, so every other route Graph has to a
+/// file is refused rather than checked. A name that could reach past the
+/// folder (a `/`, `\` or `:` in it, or only dots) is refused too; no
+/// OneDrive name has one.
+final class FromGraphFolder extends WhereFetchesReadFrom {
+  const FromGraphFolder(this.drive, this.folder);
+
+  final GraphId drive;
+  final GraphId folder;
+
+  /// Each segment is compared decoded, as is_effects' [PathPrefix] compares
+  /// them canonically, so `{folder}%3A` is `{folder}:`.
+  @override
+  PathPrefix? _prefixCovering(Origin site, WebPath path) {
+    if (site != _graph) return null;
+    final queryAt = path.value.indexOf('?');
+    final raw = queryAt < 0 ? path.value : path.value.substring(0, queryAt);
+    final query = queryAt < 0 ? null : path.value.substring(queryAt + 1);
+    final segments = _decodedSegments(raw);
+    final folderAt = '/v1.0/drives/${drive.value}/items/${folder.value}';
+    switch (segments) {
+      case ['v1.0', 'drives', final d, 'items', final f, 'children']
+          when d == drive.value &&
+              f == folder.value &&
+              (query == null || _isSelectOnly(query)):
+        return PathPrefix.parse('$folderAt/');
+      case ['v1.0', 'drives', final d, 'items', final f, final name, 'content']
+          when query == null &&
+              d == drive.value &&
+              f == '${folder.value}:' &&
+              _isFileNameAndColon(name):
+        return PathPrefix.parse('$folderAt:/${raw.split('/')[6]}/');
+      default:
+        return null;
+    }
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is FromGraphFolder &&
+      other.drive == drive &&
+      other.folder == folder;
+
+  @override
+  int get hashCode => Object.hash(drive, folder);
+
+  @override
+  JsonObject _toJson() => JsonObject.of({
+    'kind': _FromKind.graphFolder.name,
+    'drive': drive.value,
+    'folder': folder.value,
+  });
+}
+
+final _graph = Origin.parse('https://graph.microsoft.com')!;
+
+/// [raw]'s segments after its leading `/`, each decoded, or null when one
+/// isn't UTF-8. [raw] is from a [WebPath], so every escape in it is well
+/// formed.
+List<String>? _decodedSegments(String raw) {
+  if (!raw.startsWith('/')) return null;
+  try {
+    return [
+      for (final s in raw.substring(1).split('/')) Uri.decodeComponent(s),
+    ];
+  } on FormatException {
+    return null;
+  }
+}
+
+/// Whether [query] asks only which fields to return: a `$select` listing
+/// names. Another query option, such as `$expand=children`, could list
+/// what lies below the folder.
+bool _isSelectOnly(String query) {
+  try {
+    return RegExp(r'^\$select=[A-Za-z]+(,[A-Za-z]+)*$')
+        .hasMatch(Uri.decodeQueryComponent(query));
+  } on FormatException {
+    return false;
+  }
+}
+
+/// Whether [segment], decoded, is a file's name and the `:` that ends it.
+bool _isFileNameAndColon(String segment) {
+  if (!segment.endsWith(':')) return false;
+  final name = segment.substring(0, segment.length - 1);
+  return name.isNotEmpty &&
+      !name.contains(RegExp(r'[/\\:]')) &&
+      !RegExp(r'^\.+$').hasMatch(name);
+}
+
+/// The tag a [WhereFetchesReadFrom] carries on the wire.
+enum _FromKind { addressesUnder, graphFolder }
+
+/// A Microsoft Graph drive or item id, such as `b!3x9Q…` or
+/// `01BYE5RZ6QN3…`: letters, digits, `!`, `-` and `_`, so it is always one
+/// path segment, spelled one way.
+final class GraphId {
+  const GraphId._(this.value);
+
+  /// [raw] as an id, or null when it has any other character or none.
+  static GraphId? parse(String raw) =>
+      RegExp(r'^[A-Za-z0-9!_-]+$').hasMatch(raw) ? GraphId._(raw) : null;
+
+  final String value;
+
+  @override
+  bool operator ==(Object other) => other is GraphId && other.value == value;
+
+  @override
+  int get hashCode => value.hashCode;
+
+  @override
+  String toString() => value;
+}
+
+GraphId _graphIdFromJson(String raw, String field) =>
+    GraphId.parse(raw) ??
+    (throw FormatException('$field: not a Graph id: $raw'));
 
 /// A grant to make web requests [to] somewhere, going as [goesAs].
 final class GrantToMakeWebRequests {

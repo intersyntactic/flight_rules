@@ -1,3 +1,8 @@
+## 0.5.0
+
+- **Breaking:** `GrantToFetch.from` is a `WhereFetchesReadFrom`: `FromAddressesUnder(prefix)`, what an `AddressPrefix` granted before, or `FromGraphFolder(drive, folder)`, one folder of a Microsoft Graph drive. A folder grant allows only the folder's listing, `/v1.0/drives/{drive}/items/{folder}/children` with at most a `$select`, and a file in it by name, `/v1.0/drives/{drive}/items/{folder}:/{name}:/content`, and refuses a name with a `/`, `\` or `:` or of only dots. Its `grantedPathPrefix` is the request's own. On the wire `from` carries a `kind`, `addressesUnder` with a `prefix` or `graphFolder` with a `drive` and `folder`, so 0.4.0's rules are not read.
+- `GraphId`: a Graph drive or item id, one path segment of letters, digits, `!`, `-` and `_`.
+
 ## 0.4.0
 
 - **Breaking:** `sitesTheWebDriverMayReach` is split in two, so a grant to make web requests never lets a fetch through, and the reverse. `fetchesMayReach` holds `GrantToFetch(from, goesAs)`, decided by `fetchGrantFor(site, path, signIn, leasedNow:, pooled:)`. `webRequestsMayReach` holds `GrantToMakeWebRequests(to, goesAs)`, decided by `webRequestsGrantFor(site, path, signIn, leasedNow:, pooled:, replyEndpoint:)`, once for each request a tool builds. Each returns `(grant:, grantedPathPrefix:)`, the prefix being the one the request was granted under, for is_effects' `GrantedRequest.under(proposed, grantedPathPrefix)`: for a reply grant it is the endpoint's. `SiteAndSignIn` and `grantFor` are removed, and 0.3.0's rules are not read.
