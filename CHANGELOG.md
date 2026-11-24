@@ -1,3 +1,8 @@
+## 0.6.0
+
+- **Breaking:** `FlightRules` gains a required `givenTools`: the tools a trajectory is given, as is_tools_api `OneActionTool`s written inline, keyed by name in the order the rules list them. `FlightRules.of` returns null, and `fromJson` throws, when two share a name; `fromJson` also throws for a tool `OneActionTool.parse` refuses. On the wire, `"givenTools": [<tool>…]`, each tool in the shape `OneActionTool.toJson` writes. So 0.5.0's rules are not read.
+- Depends on is_tools_api ^0.3.0.
+
 ## 0.5.0
 
 - **Breaking:** `GrantToFetch.from` is a `WhereFetchesReadFrom`: `FromAddressesUnder(prefix)`, what an `AddressPrefix` granted before, or `FromPathsMatching.of(origin, patterns)`, only the paths one of its `PathPattern`s matches on `origin`. A pattern such as `/drives/D/items/F:/{name}:/content` spells its segments: literals, compared decoded, and `{name}`, one segment that is not empty, has no `/`, `\` or `:` once decoded and is not only dots, with an optional fixed suffix. There is no wildcard and no "any depth". A pattern names at least two segments, starts with a literal, and its query may carry only the `QueryOptionName`s it lists, each once, each with a comma-separated list of words. A read is granted under its own path less its last segment. On the wire `from` carries a `kind`: `addressesUnder` with a `prefix`, or `pathsMatching` with an `origin` and `patterns`, each `{"path": …, "optionsTakingWordLists": […]}`. So 0.4.0's rules are not read.

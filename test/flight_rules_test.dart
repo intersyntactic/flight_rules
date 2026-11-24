@@ -3,6 +3,15 @@ import 'dart:convert';
 import 'package:checked_json/checked_json.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:is_flight_rules/is_flight_rules.dart';
+import 'package:is_tools_api/is_tools_api.dart'
+    show
+        OneActionTool,
+        Input,
+        Field,
+        ActionName,
+        InputReference,
+        BoundReference,
+        Literal;
 import 'package:test/test.dart';
 
 void main() {
@@ -17,11 +26,22 @@ void main() {
     programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
   );
   final starting = ModelAndSignIn(signIn: claudeTeam, model: opus);
+  OneActionTool tool(String name, String action) => OneActionTool.of(
+    name: name,
+    description: 'Reads from the case folder.',
+    input: Input.field(Field('name', .string(minLength: 1))),
+    bound: {'folder': Literal.text('01abc')},
+    action: ActionName.of(action),
+    arguments: const [BoundReference('folder'), InputReference('name')],
+  );
+  final readDocument = tool('read_document', 'readDocument');
+  final listFolder = tool('list_folder', 'listFolder');
   final rules = FlightRules.of(
     whatMayLeaveThisMachine: whatMayLeave,
     startingModel: starting,
     programsItMayRun: [git, pandoc],
     programsItNeeds: [git],
+    givenTools: [readDocument, listFolder],
   )!;
 
   test('flight rules read back as they were written', () {
@@ -35,6 +55,42 @@ void main() {
     );
     expect(back.programsItMayRun, {git, pandoc});
     expect(back.programsItNeeds, {git});
+    expect(back.givenTools.keys, ['read_document', 'list_folder']);
+    expect(
+      jsonEncode(back.givenTools['read_document']!.toJson()),
+      jsonEncode(readDocument.toJson()),
+    );
+  });
+
+  test('the given tools keep the order the rules list them in', () {
+    final reversed = FlightRules.of(
+      whatMayLeaveThisMachine: whatMayLeave,
+      startingModel: starting,
+      programsItMayRun: const [],
+      programsItNeeds: const [],
+      givenTools: [listFolder, readDocument],
+    )!;
+    expect(reversed.givenTools.keys, ['list_folder', 'read_document']);
+    expect(
+      FlightRules.fromJson(JsonObject.decode(jsonEncode(reversed.toJson())))
+          .givenTools
+          .keys,
+      ['list_folder', 'read_document'],
+    );
+  });
+
+  test('no two given tools share a name', () {
+    expect(
+      FlightRules.of(
+        whatMayLeaveThisMachine: whatMayLeave,
+        startingModel: starting,
+        programsItMayRun: const [],
+        programsItNeeds: const [],
+        givenTools: [readDocument, tool('read_document', 'listFolder')],
+      ),
+      isNull,
+    );
+    expect(() => rules.givenTools['other'] = readDocument, throwsA(anything));
   });
 
   test('the starting model goes out only as a sign-in the rules name', () {
@@ -47,6 +103,7 @@ void main() {
         ),
         programsItMayRun: const [],
         programsItNeeds: const [],
+        givenTools: const [],
       ),
       isNull,
     );
@@ -65,6 +122,7 @@ void main() {
         startingModel: starting,
         programsItMayRun: [git],
         programsItNeeds: [git, pandoc],
+        givenTools: const [],
       ),
       isNull,
     );
@@ -75,6 +133,7 @@ void main() {
         startingModel: starting,
         programsItMayRun: [git, pandoc],
         programsItNeeds: const [],
+        givenTools: const [],
       ),
       isNotNull,
     );
@@ -124,6 +183,28 @@ void main() {
       {
         ...good,
         'programsItNeeds': ['git', 'curl'],
+      },
+      {...good}..remove('givenTools'),
+      {...good, 'givenTools': null},
+      {
+        ...good,
+        'givenTools': [null],
+      },
+      {
+        ...good,
+        'givenTools': [
+          {...readDocument.toJson().asUncheckedMap(), 'steps': <Object?>[]},
+        ],
+      },
+      {
+        ...good,
+        'givenTools': [
+          {...readDocument.toJson().asUncheckedMap(), 'level': 0},
+        ],
+      },
+      {
+        ...good,
+        'givenTools': [readDocument.toJson(), readDocument.toJson()],
       },
     ]) {
       expect(
