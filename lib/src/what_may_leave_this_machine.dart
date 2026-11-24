@@ -361,8 +361,14 @@ final class FromPathsMatching extends WhereFetchesReadFrom {
       for (final pattern in patterns)
         {
           'path': pattern.path,
-          'optionsTakingWordLists': [
-            for (final option in pattern.optionsTakingWordLists) option.value,
+          'queryOptions': [
+            for (final MapEntry(key: name, value: rule)
+                in pattern.queryOptions.entries)
+              {
+                'name': name.value,
+                'presence': rule.presence.name,
+                'wordsFrom': [...rule.wordsFrom],
+              },
           ],
         },
     ],
@@ -371,21 +377,35 @@ final class FromPathsMatching extends WhereFetchesReadFrom {
 
 /// [json] as a [PathPattern], read strictly.
 PathPattern _pathPatternFromJson(JsonObject json, String field) {
-  exactly(field, json, const {'path', 'optionsTakingWordLists'});
-  final options = [
-    for (final (i, raw) in json.list('optionsTakingWordLists').indexed)
-      switch (raw) {
-            final String name? => QueryOptionName.parse(name),
-            _ => null,
-          } ??
-          (throw FormatException(
-            '$field.optionsTakingWordLists[$i]: not a query option name',
-          )),
-  ];
-  return PathPattern.parse(
-        json.string('path'),
-        optionsTakingWordLists: options,
-      ) ??
+  exactly(field, json, const {'path', 'queryOptions'});
+  final options = <QueryOptionName, QueryOptionRule>{};
+  for (final (i, option) in json.objects('queryOptions').indexed) {
+    final at = '$field.queryOptions[$i]';
+    exactly(at, option, const {'name', 'presence', 'wordsFrom'});
+    final name =
+        QueryOptionName.parse(option.string('name')) ??
+        (throw FormatException('$at.name: not a query option name'));
+    final rule =
+        QueryOptionRule.of(
+          oneOf(
+            QueryOptionPresence.values,
+            option.string('presence'),
+            '$at.presence',
+          ),
+          [
+            for (final (j, word) in option.list('wordsFrom').indexed)
+              word is String
+                  ? word
+                  : throw FormatException('$at.wordsFrom[$j]: not a word'),
+          ],
+        ) ??
+        (throw FormatException('$at.wordsFrom: not a list of words'));
+    if (options.containsKey(name)) {
+      throw FormatException('$at.name: named twice: $name');
+    }
+    options[name] = rule;
+  }
+  return PathPattern.parse(json.string('path'), queryOptions: options) ??
       (throw FormatException('$field.path: not a path pattern'));
 }
 
