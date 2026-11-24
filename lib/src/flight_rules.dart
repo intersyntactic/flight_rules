@@ -1,6 +1,6 @@
 import 'package:checked_json/checked_json.dart';
 import 'package:is_effects/is_effects.dart';
-import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
+import 'package:is_tools_api/is_tools_api.dart' show Fetch, OneActionTool;
 
 import 'read_strictly.dart';
 import 'what_may_leave_this_machine.dart';
@@ -13,8 +13,10 @@ import 'what_may_leave_this_machine.dart';
 /// model call go out as, so a trajectory is never started on a model whose
 /// first call would be refused; every program in [programsItNeeds] is one
 /// in [programsItMayRun], so a trajectory never needs a program it could
-/// not run; and no two of [givenTools] share a name, so a model's call by
-/// name reaches exactly one.
+/// not run; no two of [givenTools] share a name, so a model's call by name
+/// reaches exactly one; and each given tool's action is one some grant
+/// could let out, so a trajectory is never given a tool every call of
+/// which would be refused.
 final class FlightRules {
   const FlightRules._(
     this.whatMayLeaveThisMachine,
@@ -26,8 +28,9 @@ final class FlightRules {
 
   /// The rules, or null when [startingModel]'s sign-in is not one
   /// [whatMayLeaveThisMachine] lets a model call go out as, when a program
-  /// in [programsItNeeds] is not in [programsItMayRun], or when two of
-  /// [givenTools] share a name.
+  /// in [programsItNeeds] is not in [programsItMayRun], when two of
+  /// [givenTools] share a name, or when one's action no grant could ever
+  /// let out.
   static FlightRules? of({
     required WhatMayLeaveThisMachine whatMayLeaveThisMachine,
     required ModelAndSignIn startingModel,
@@ -37,8 +40,11 @@ final class FlightRules {
   }) {
     final mayRun = Set<ProgramName>.unmodifiable(programsItMayRun);
     final needs = Set<ProgramName>.unmodifiable(programsItNeeds);
-    final (tools, sharedName) = _byName(givenTools);
-    return sharedName == null &&
+    final (tools, toolsBreak) = _toolsByName(
+      whatMayLeaveThisMachine,
+      givenTools,
+    );
+    return toolsBreak == null &&
             _whyNot(whatMayLeaveThisMachine, startingModel, mayRun, needs) ==
                 null
         ? FlightRules._(
@@ -71,14 +77,28 @@ final class FlightRules {
     return null;
   }
 
-  /// [tools] by name, in the order given, and the first name two of them
-  /// share, or null when none do.
-  static (Map<String, OneActionTool>, String?) _byName(
+  /// [tools] by name, in the order given, and why they break the rules [of]
+  /// holds them to, as [_whyNot] says it, or null when they don't: two
+  /// share a name, or one's action no grant could ever let out.
+  static (Map<String, OneActionTool>, String?) _toolsByName(
+    WhatMayLeaveThisMachine whatMayLeaveThisMachine,
     Iterable<OneActionTool> tools,
   ) {
     final byName = <String, OneActionTool>{};
     for (final tool in tools) {
-      if (byName.containsKey(tool.name)) return (const {}, tool.name);
+      if (byName.containsKey(tool.name)) {
+        return (const {}, 'givenTools: two tools are named ${tool.name}');
+      }
+      final reachable = switch (tool.action) {
+        Fetch(:final origin, :final path, :final signIn) =>
+          whatMayLeaveThisMachine.couldEverFetch(origin, path, signIn),
+      };
+      if (!reachable) {
+        return (
+          const {},
+          'givenTools: ${tool.name} proposes what no grant could let out',
+        );
+      }
       byName[tool.name] = tool;
     }
     return (Map.unmodifiable(byName), null);
@@ -114,7 +134,7 @@ final class FlightRules {
     final needs = Set<ProgramName>.unmodifiable(programs('programsItNeeds'));
     final why = _whyNot(whatMayLeaveThisMachine, startingModel, mayRun, needs);
     if (why != null) throw FormatException('$field.$why');
-    final (tools, sharedName) = _byName([
+    final (tools, toolsBreak) = _toolsByName(whatMayLeaveThisMachine, [
       for (final (i, tool) in json.list('givenTools').indexed)
         switch (JsonObject.parse(tool)) {
               final object? => OneActionTool.parse(object),
@@ -124,11 +144,7 @@ final class FlightRules {
               '$field.givenTools[$i]: not a one-action tool',
             )),
     ]);
-    if (sharedName != null) {
-      throw FormatException(
-        '$field.givenTools: two tools are named $sharedName',
-      );
-    }
+    if (toolsBreak != null) throw FormatException('$field.$toolsBreak');
     return FlightRules._(
       whatMayLeaveThisMachine,
       startingModel,
@@ -154,9 +170,9 @@ final class FlightRules {
 
   /// The tools the trajectory is given, by name, in the order the rules
   /// list them. A tool adds no reach: the airlock decides each action it
-  /// proposes against the rest of these rules. A tool's bound values, such
-  /// as a folder's id, fill in its arguments and limit nothing; only
-  /// [whatMayLeaveThisMachine] limits where its actions reach.
+  /// proposes against the rest of these rules. A tool's fixed values, such
+  /// as the path it fetches, limit nothing; only [whatMayLeaveThisMachine]
+  /// limits where its actions reach.
   final Map<String, OneActionTool> givenTools;
 
   /// Whether the trajectory may run [program].

@@ -4,14 +4,7 @@ import 'package:checked_json/checked_json.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:is_flight_rules/is_flight_rules.dart';
 import 'package:is_tools_api/is_tools_api.dart'
-    show
-        OneActionTool,
-        Input,
-        Field,
-        ActionName,
-        InputReference,
-        BoundReference,
-        Literal;
+    show Fetch, Input, OneActionTool;
 import 'package:test/test.dart';
 
 void main() {
@@ -19,29 +12,40 @@ void main() {
   final opus = ModelName.parse('claude-opus-5-5')!;
   final git = ProgramName.parse('git')!;
   final pandoc = ProgramName.parse('pandoc')!;
+  final graph = Origin.parse('https://graph.microsoft.com')!;
+  final bot = SignIn.parse('teams-bot')!;
   final whatMayLeave = WhatMayLeaveThisMachine(
     modelSignInsCallsMayGoOutAs: [claudeTeam],
-    fetchesMayReach: const [],
+    fetchesMayReach: [
+      GrantToFetch(
+        FromAddressesUnder(
+          AddressPrefix.of(graph, PathPrefix.parse('/v1.0/drives/d/items/F/')!),
+        ),
+        GoesAsSignIn(bot),
+      ),
+    ],
     webRequestsMayReach: const [],
     programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
   );
   final starting = ModelAndSignIn(signIn: claudeTeam, model: opus);
-  OneActionTool tool(String name, String action) => OneActionTool.of(
+  OneActionTool tool(
+    String name, {
+    String path = '/v1.0/drives/d/items/F/children',
+    SignIn? signIn,
+  }) => OneActionTool.of(
     name: name,
-    description: 'Reads from the case folder.',
-    input: Input.field(Field('name', .string(minLength: 1))),
-    bound: {'folder': Literal.text('01abc')},
-    action: ActionName.of(action),
-    arguments: const [BoundReference('folder'), InputReference('name')],
+    description: 'Lists the case folder.',
+    input: Input.none,
+    action: Fetch(graph, WebPath.parse(path)!, signIn ?? bot),
   );
-  final readDocument = tool('read_document', 'readDocument');
-  final listFolder = tool('list_folder', 'listFolder');
+  final readReport = tool('read_report', path: '/v1.0/drives/d/items/F/report');
+  final listFolder = tool('list_folder');
   final rules = FlightRules.of(
     whatMayLeaveThisMachine: whatMayLeave,
     startingModel: starting,
     programsItMayRun: [git, pandoc],
     programsItNeeds: [git],
-    givenTools: [readDocument, listFolder],
+    givenTools: [readReport, listFolder],
   )!;
 
   test('flight rules read back as they were written', () {
@@ -55,10 +59,10 @@ void main() {
     );
     expect(back.programsItMayRun, {git, pandoc});
     expect(back.programsItNeeds, {git});
-    expect(back.givenTools.keys, ['read_document', 'list_folder']);
+    expect(back.givenTools.keys, ['read_report', 'list_folder']);
     expect(
-      jsonEncode(back.givenTools['read_document']!.toJson()),
-      jsonEncode(readDocument.toJson()),
+      jsonEncode(back.givenTools['read_report']!.toJson()),
+      jsonEncode(readReport.toJson()),
     );
   });
 
@@ -68,14 +72,14 @@ void main() {
       startingModel: starting,
       programsItMayRun: const [],
       programsItNeeds: const [],
-      givenTools: [listFolder, readDocument],
+      givenTools: [listFolder, readReport],
     )!;
-    expect(reversed.givenTools.keys, ['list_folder', 'read_document']);
+    expect(reversed.givenTools.keys, ['list_folder', 'read_report']);
     expect(
       FlightRules.fromJson(JsonObject.decode(jsonEncode(reversed.toJson())))
           .givenTools
           .keys,
-      ['list_folder', 'read_document'],
+      ['list_folder', 'read_report'],
     );
   });
 
@@ -86,11 +90,24 @@ void main() {
         startingModel: starting,
         programsItMayRun: const [],
         programsItNeeds: const [],
-        givenTools: [readDocument, tool('read_document', 'listFolder')],
+        givenTools: [readReport, tool('read_report')],
       ),
       isNull,
     );
-    expect(() => rules.givenTools['other'] = readDocument, throwsA(anything));
+    expect(() => rules.givenTools['other'] = readReport, throwsA(anything));
+  });
+
+  test('no given tool proposes what no grant could let out', () {
+    FlightRules? given(OneActionTool tool) => FlightRules.of(
+      whatMayLeaveThisMachine: whatMayLeave,
+      startingModel: starting,
+      programsItMayRun: const [],
+      programsItNeeds: const [],
+      givenTools: [listFolder, tool],
+    );
+    expect(given(readReport), isNotNull);
+    expect(given(tool('outside', path: '/v1.0/drives/d/items/G')), isNull);
+    expect(given(tool('as_other', signIn: SignIn.parse('other-bot')!)), isNull);
   });
 
   test('the starting model goes out only as a sign-in the rules name', () {
@@ -193,18 +210,24 @@ void main() {
       {
         ...good,
         'givenTools': [
-          {...readDocument.toJson().asUncheckedMap(), 'steps': <Object?>[]},
+          {...readReport.toJson().asUncheckedMap(), 'steps': <Object?>[]},
         ],
       },
       {
         ...good,
         'givenTools': [
-          {...readDocument.toJson().asUncheckedMap(), 'level': 0},
+          {...readReport.toJson().asUncheckedMap(), 'level': 0},
         ],
       },
       {
         ...good,
-        'givenTools': [readDocument.toJson(), readDocument.toJson()],
+        'givenTools': [readReport.toJson(), readReport.toJson()],
+      },
+      {
+        ...good,
+        'givenTools': [
+          tool('outside', path: '/v1.0/drives/d/items/G').toJson(),
+        ],
       },
     ]) {
       expect(

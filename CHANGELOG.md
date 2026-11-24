@@ -1,7 +1,9 @@
 ## 0.6.0
 
 - **Breaking:** `FlightRules` gains a required `givenTools`: the tools a trajectory is given, as is_tools_api `OneActionTool`s written inline, keyed by name in the order the rules list them. `FlightRules.of` returns null, and `fromJson` throws, when two share a name; `fromJson` also throws for a tool `OneActionTool.parse` refuses. On the wire, `"givenTools": [<tool>…]`, each tool in the shape `OneActionTool.toJson` writes. So 0.5.0's rules are not read.
-- Depends on is_tools_api ^0.3.0.
+- `FlightRules.of` returns null, and `fromJson` throws, when a given tool's action is one no grant could let out: for a `Fetch`, when `couldEverFetch` is false.
+- `WhatMayLeaveThisMachine.couldEverFetch(site, path, signIn)`: whether some fetch grant reaches `path` on `site` and could let it go as `signIn`, by name or as a pool's leased bot. A false answer means `fetchGrantFor` refuses that fetch whatever the leases.
+- Depends on is_tools_api ^0.4.0 and is_effects ^0.14.3, so a tool's `SignIn` and a grant's are one type.
 
 ## 0.5.0
 
