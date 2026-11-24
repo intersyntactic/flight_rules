@@ -154,7 +154,9 @@ final class FlightRules {
 
   /// The tools the trajectory is given, by name, in the order the rules
   /// list them. A tool adds no reach: the airlock decides each action it
-  /// proposes against the rest of these rules.
+  /// proposes against the rest of these rules. A tool's bound values, such
+  /// as a folder's id, fill in its arguments and limit nothing; only
+  /// [whatMayLeaveThisMachine] limits where its actions reach.
   final Map<String, OneActionTool> givenTools;
 
   /// Whether the trajectory may run [program].

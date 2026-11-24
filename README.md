@@ -31,7 +31,9 @@ admission that starts a trajectory records exactly what it was given, bound
 values and all. They are keyed by name in the order listed, and no two share
 a name, since a model calls a tool by name. A tool adds no reach: the
 airlock still decides each action one proposes against the rest of the
-rules.
+rules. A tool's bound values, such as a folder's id, fill in its arguments
+and limit nothing; only `whatMayLeaveThisMachine` limits where its actions
+reach.
 
 `FlightRules.fromJson` reads `{"whatMayLeaveThisMachine": …,
 "startingModel": {"signIn": …, "model": …}, "programsItMayRun": […],
