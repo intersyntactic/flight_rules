@@ -710,6 +710,33 @@ void main() {
     });
   });
 
+  test('a fetch no grant reaches could never be made, whoever it goes as', () {
+    final cases = [
+      (graph, '/v1.0/drives/abc/items/x'),
+      (graph, '/v1.0/drives/b!d_1/items/01F/children'),
+      (graph, '/v1.0/drives/b!d_1/items/01F:/a%20b.docx:/content'),
+      (docs, '/guides/a'),
+      (graph, '/v1.0/drives/other/items/x'),
+      (graph, '/v1.0/drives/b!d_1/items/01X'),
+      (teams, '/v3/conversations/x'),
+      (docs, '/v1.0/drives/abc/items/x'),
+    ];
+    for (final (site, raw) in cases) {
+      final granted = [
+        null,
+        bot,
+      ].any((signIn) => fetch(site, raw, signIn) != null);
+      expect(
+        rules.couldEverFetch(site, path(raw)),
+        granted,
+        reason: '$site$raw',
+      );
+    }
+    // Reached, though only as the bot: the sign-in is decided when it runs.
+    expect(fetch(graph, '/v1.0/drives/abc/items/x', null), isNull);
+    expect(rules.couldEverFetch(graph, path('/v1.0/drives/abc/items/x')), true);
+  });
+
   test('a grant under no sign-in is not a grant under a sign-in', () {
     // By ==, not only by hash, so a set that compared grants by address
     // alone would still be caught.

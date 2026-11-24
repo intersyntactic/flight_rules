@@ -102,6 +102,13 @@ final class WhatMayLeaveThisMachine {
     return null;
   }
 
+  /// Whether some grant in [fetchesMayReach] reaches [path] on [site], as
+  /// whoever it goes as. False means [fetchGrantFor] refuses that fetch
+  /// whatever the sign-in and leases, so a fixed fetch can be judged when
+  /// the rules are written.
+  bool couldEverFetch(Origin site, WebPath path) =>
+      fetchesMayReach.any((g) => g.from._prefixCovering(site, path) != null);
+
   /// The grant in [webRequestsMayReach] that lets a web request to [path]
   /// on [site] go as [signIn], or as nobody when it is null, with the
   /// prefix it was granted under, for the request's `grantedPathPrefix`;
