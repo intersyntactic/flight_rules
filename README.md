@@ -28,7 +28,7 @@ machine's programs happens when the trajectory starts.
 
 `givenTools` are is_tools_api `OneActionTool`s, written inline, so the
 admission that starts a trajectory records exactly what it was given. They
-are keyed by name in the order listed, and no two share a name, since a model
+are keyed by `ToolName` in the order listed, and no two share a name, since a model
 calls a tool by name. A tool adds no reach: the airlock still decides each
 action one proposes against the rest of the rules. A tool's fixed values,
 such as the path it fetches, limit nothing; only `whatMayLeaveThisMachine`

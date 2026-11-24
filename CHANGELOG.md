@@ -1,3 +1,9 @@
+## 0.7.0
+
+- **Breaking:** `givenTools` is keyed by is_tools_api's `ToolName`, not `String`, since a `OneActionTool`'s `name` is now a `ToolName`. Look a tool up with `givenTools[ToolName.of('list_folder')]`.
+- `fromJson` throws for a given tool whose name breaks `^[a-zA-Z0-9_-]{1,64}$`, since `OneActionTool.parse` now refuses it. The wire format is otherwise unchanged, so rules 0.6.x wrote with valid tool names read back as before.
+- Depends on is_tools_api ^0.5.0.
+
 ## 0.6.1
 
 - Depends on is_effects ^0.15.0. is_flight_rules uses none of what 0.15.0 changed (`Outcome`, `ModelReply`), so its own API is the same.

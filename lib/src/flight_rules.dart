@@ -1,6 +1,7 @@
 import 'package:checked_json/checked_json.dart';
 import 'package:is_effects/is_effects.dart';
-import 'package:is_tools_api/is_tools_api.dart' show Fetch, OneActionTool;
+import 'package:is_tools_api/is_tools_api.dart'
+    show Fetch, OneActionTool, ToolName;
 
 import 'read_strictly.dart';
 import 'what_may_leave_this_machine.dart';
@@ -80,11 +81,11 @@ final class FlightRules {
   /// [tools] by name, in the order given, and why they break the rules [of]
   /// holds them to, as [_whyNot] says it, or null when they don't: two
   /// share a name, or one's action no grant could ever let out.
-  static (Map<String, OneActionTool>, String?) _toolsByName(
+  static (Map<ToolName, OneActionTool>, String?) _toolsByName(
     WhatMayLeaveThisMachine whatMayLeaveThisMachine,
     Iterable<OneActionTool> tools,
   ) {
-    final byName = <String, OneActionTool>{};
+    final byName = <ToolName, OneActionTool>{};
     for (final tool in tools) {
       if (byName.containsKey(tool.name)) {
         return (const {}, 'givenTools: two tools are named ${tool.name}');
@@ -173,7 +174,7 @@ final class FlightRules {
   /// proposes against the rest of these rules. A tool's fixed values, such
   /// as the path it fetches, limit nothing; only [whatMayLeaveThisMachine]
   /// limits where its actions reach.
-  final Map<String, OneActionTool> givenTools;
+  final Map<ToolName, OneActionTool> givenTools;
 
   /// Whether the trajectory may run [program].
   bool allowsProgram(ProgramName program) => programsItMayRun.contains(program);

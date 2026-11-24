@@ -4,7 +4,7 @@ import 'package:checked_json/checked_json.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:is_flight_rules/is_flight_rules.dart';
 import 'package:is_tools_api/is_tools_api.dart'
-    show Fetch, Input, OneActionTool;
+    show Fetch, Input, OneActionTool, ToolName;
 import 'package:test/test.dart';
 
 void main() {
@@ -33,7 +33,7 @@ void main() {
     String path = '/v1.0/drives/d/items/F/children',
     SignIn? signIn,
   }) => OneActionTool.of(
-    name: name,
+    name: ToolName.of(name),
     description: 'Lists the case folder.',
     input: Input.none,
     action: Fetch(graph, WebPath.parse(path)!, signIn ?? bot),
@@ -59,9 +59,12 @@ void main() {
     );
     expect(back.programsItMayRun, {git, pandoc});
     expect(back.programsItNeeds, {git});
-    expect(back.givenTools.keys, ['read_report', 'list_folder']);
+    expect(back.givenTools.keys, [
+      ToolName.of('read_report'),
+      ToolName.of('list_folder'),
+    ]);
     expect(
-      jsonEncode(back.givenTools['read_report']!.toJson()),
+      jsonEncode(back.givenTools[ToolName.of('read_report')]!.toJson()),
       jsonEncode(readReport.toJson()),
     );
   });
@@ -74,12 +77,15 @@ void main() {
       programsItNeeds: const [],
       givenTools: [listFolder, readReport],
     )!;
-    expect(reversed.givenTools.keys, ['list_folder', 'read_report']);
+    expect(reversed.givenTools.keys, [
+      ToolName.of('list_folder'),
+      ToolName.of('read_report'),
+    ]);
     expect(
       FlightRules.fromJson(JsonObject.decode(jsonEncode(reversed.toJson())))
           .givenTools
           .keys,
-      ['list_folder', 'read_report'],
+      [ToolName.of('list_folder'), ToolName.of('read_report')],
     );
   });
 
@@ -94,7 +100,23 @@ void main() {
       ),
       isNull,
     );
-    expect(() => rules.givenTools['other'] = readReport, throwsA(anything));
+    expect(
+      () => rules.givenTools[ToolName.of('other')] = readReport,
+      throwsA(anything),
+    );
+  });
+
+  test('rules naming a given tool outside a tool name are not read', () {
+    final written = jsonEncode(rules.toJson());
+    expect(written, contains('"read_report"'));
+    expect(
+      () => FlightRules.fromJson(
+        JsonObject.decode(
+          written.replaceFirst('"read_report"', '"read report"'),
+        ),
+      ),
+      throwsFormatException,
+    );
   });
 
   test('no given tool proposes what no grant could let out', () {
