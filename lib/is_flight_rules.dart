@@ -1,5 +1,6 @@
 /// A trajectory's flight rules: what may leave this machine, to where, and
-/// as which sign-in, and the model its loop starts on.
+/// as which sign-in, the model its loop starts on, and the tools it is
+/// given.
 library;
 
 export 'src/flight_rules.dart';

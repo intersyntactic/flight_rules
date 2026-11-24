@@ -1,8 +1,8 @@
 # is_flight_rules
 
 A trajectory's flight rules: what may leave this machine, to where, and as
-which sign-in, the model its loop starts on, and the programs it may run and
-needs.
+which sign-in, the model its loop starts on, the programs it may run and needs,
+and the tools it is given.
 
 ```dart
 final flightRules = FlightRules.of(
@@ -13,8 +13,10 @@ final flightRules = FlightRules.of(
   ),
   programsItMayRun: [git, pandoc],
   programsItNeeds: [git],
+  givenTools: [listCaseFolder],
 ); // null unless the rules let a model call go out as claude-team,
-   // and every program it needs is one it may run
+   // every program it needs is one it may run, no two given tools share
+   // a name, and some fetch grant could let each tool's fetch out
 ```
 
 `startingModel`'s sign-in is always one the rules let a model call go out as,
@@ -22,10 +24,28 @@ so a trajectory is never started on a model whose first call is refused.
 Every program in `programsItNeeds` is one in `programsItMayRun`, so a
 trajectory never needs a program it could not run. A program it may run can
 be missing from a machine; one it needs can't, and the check against the
-machine's programs happens when the trajectory starts. `FlightRules.fromJson`
-reads `{"whatMayLeaveThisMachine": …, "startingModel": {"signIn": …,
-"model": …}, "programsItMayRun": […], "programsItNeeds": […]}`; every key is
-required.
+machine's programs happens when the trajectory starts.
+
+`givenTools` are is_tools_api `OneActionTool`s, written inline, so the
+admission that starts a trajectory records exactly what it was given. They
+are keyed by name in the order listed, and no two share a name, since a model
+calls a tool by name. A tool adds no reach: the airlock still decides each
+action one proposes against the rest of the rules. A tool's fixed values,
+such as the path it fetches, limit nothing; only `whatMayLeaveThisMachine`
+limits where its actions reach.
+
+A given tool's action is one some grant could let out, so a tool every call
+of which would be refused can't be given. A `Fetch(origin, path, signIn)` is
+checked with `whatMayLeaveThisMachine.couldEverFetch(origin, path, signIn)`:
+some grant in `fetchesMayReach` reaches the path and goes as that sign-in,
+or as the bot leased from a pool, since which bot is leased is known only
+when the fetch runs. Whether a fetch is granted is still decided each time
+by `fetchGrantFor`.
+
+`FlightRules.fromJson` reads `{"whatMayLeaveThisMachine": …,
+"startingModel": {"signIn": …, "model": …}, "programsItMayRun": […],
+"programsItNeeds": […], "givenTools": […]}`; every key is required, and a
+tool `OneActionTool.parse` refuses makes the rules unreadable.
 
 ## What may leave this machine
 

@@ -102,6 +102,23 @@ final class WhatMayLeaveThisMachine {
     return null;
   }
 
+  /// Whether some grant in [fetchesMayReach] reaches [path] on [site] and
+  /// could let it go as [signIn], or as nobody when it is null. False means
+  /// [fetchGrantFor] refuses that fetch whatever the leases and pools, so a
+  /// fixed fetch can be judged when the rules are written. A grant to a
+  /// pool's leased bot counts for any sign-in, since which bot is leased is
+  /// known only when the fetch runs.
+  bool couldEverFetch(Origin site, WebPath path, SignIn? signIn) =>
+      fetchesMayReach.any(
+        (grant) =>
+            grant.from._prefixCovering(site, path) != null &&
+            switch (grant.goesAs) {
+              GoesAsNobody() => signIn == null,
+              GoesAsSignIn(signIn: final named) => named == signIn,
+              GoesAsBotLeasedFrom() => signIn != null,
+            },
+      );
+
   /// The grant in [webRequestsMayReach] that lets a web request to [path]
   /// on [site] go as [signIn], or as nobody when it is null, with the
   /// prefix it was granted under, for the request's `grantedPathPrefix`;
