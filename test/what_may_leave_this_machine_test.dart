@@ -710,31 +710,62 @@ void main() {
     });
   });
 
-  test('a fetch no grant reaches could never be made, whoever it goes as', () {
+  test('a fetch no grant could let go is refused whatever the leases', () {
+    final agents = BotPool.parse('teams-agents')!;
+    final other = SignIn.parse('other-bot')!;
+    final withPool = WhatMayLeaveThisMachine(
+      modelSignInsCallsMayGoOutAs: [claudeTeam],
+      fetchesMayReach: [
+        ...rules.fetchesMayReach,
+        GrantToFetch(
+          FromAddressesUnder(under(docs, '/leased/')),
+          GoesAsBotLeasedFrom(agents),
+        ),
+      ],
+      webRequestsMayReach: const [],
+      programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
+    );
     final cases = [
       (graph, '/v1.0/drives/abc/items/x'),
       (graph, '/v1.0/drives/b!d_1/items/01F/children'),
       (graph, '/v1.0/drives/b!d_1/items/01F:/a%20b.docx:/content'),
       (docs, '/guides/a'),
+      (docs, '/leased/a'),
       (graph, '/v1.0/drives/other/items/x'),
       (graph, '/v1.0/drives/b!d_1/items/01X'),
       (teams, '/v3/conversations/x'),
       (docs, '/v1.0/drives/abc/items/x'),
     ];
     for (final (site, raw) in cases) {
-      final granted = [
-        null,
-        bot,
-      ].any((signIn) => fetch(site, raw, signIn) != null);
-      expect(
-        rules.couldEverFetch(site, path(raw)),
-        granted,
-        reason: '$site$raw',
-      );
+      for (final signIn in [null, bot, other]) {
+        // Granted now, or once signIn is the bot leased from the pool.
+        final grantedSomehow =
+            [
+              const <BotPool, SignIn>{},
+              if (signIn != null) {agents: signIn},
+            ].any(
+              (leasedNow) =>
+                  withPool.fetchGrantFor(
+                    site,
+                    path(raw),
+                    signIn,
+                    leasedNow: leasedNow,
+                    pooled: const {},
+                  ) !=
+                  null,
+            );
+        expect(
+          withPool.couldEverFetch(site, path(raw), signIn),
+          grantedSomehow,
+          reason: '$site$raw as $signIn',
+        );
+      }
     }
-    // Reached, though only as the bot: the sign-in is decided when it runs.
-    expect(fetch(graph, '/v1.0/drives/abc/items/x', null), isNull);
-    expect(rules.couldEverFetch(graph, path('/v1.0/drives/abc/items/x')), true);
+    final driveItem = path('/v1.0/drives/abc/items/x');
+    expect(rules.couldEverFetch(graph, driveItem, null), isFalse);
+    expect(rules.couldEverFetch(graph, driveItem, bot), isTrue);
+    expect(rules.couldEverFetch(graph, driveItem, other), isFalse);
+    expect(withPool.couldEverFetch(docs, path('/leased/a'), other), isTrue);
   });
 
   test('a grant under no sign-in is not a grant under a sign-in', () {
