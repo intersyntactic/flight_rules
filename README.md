@@ -68,7 +68,11 @@ final rules = WhatMayLeaveThisMachine(
     GrantToFetch(
       FromPathsMatching.of(Origin.parse('https://graph.microsoft.com')!, [
         PathPattern.parse('/v1.0/drives/b!abc/items/01F/children',
-            optionsTakingWordLists: [QueryOptionName.parse(r'$select')!])!,
+            queryOptions: {
+              QueryOptionName.parse(r'$select')!: QueryOptionRule.of(
+                  QueryOptionPresence.mustCarry,
+                  ['name', 'size', 'lastModifiedDateTime', 'folder'])!,
+            })!,
         PathPattern.parse('/v1.0/drives/b!abc/items/01F:/{name}:/content')!,
       ])!,
       GoesAsBotLeasedFrom(BotPool.parse('teams-agents')!),
@@ -128,8 +132,14 @@ new, can let a trajectory post as a bot leased to another.
   wildcard and no "any depth"; a literal can't hold a `*`, so no pattern
   reads as one. A pattern names at least two segments and starts with a
   literal. Its query may carry only the options it lists, each once and
-  each with a comma-separated list of words, so `$select=name,size` can
-  narrow a listing and `$expand=children` can't widen it. A read is
+  each with a comma-separated list of words drawn from the option's own
+  `wordsFrom`, so `$select=name,size` can narrow a listing and
+  `$expand=children` can't widen it. The words are an allow-list, never a
+  pattern: Graph lists each file with a `downloadUrl` that downloads it
+  signed in as nobody for no `$select`, `$select=*` and
+  `$select=name,content.downloadUrl`, and a spelling nobody tried could do
+  the same. An option the pattern says it `mustCarry` makes a read without
+  it refused, so a bare `/children` never matches. A read is
   granted under its own path less its last segment, so a redirect on the
   same site stays on that read.
 - `ToOwnReplyEndpoint`: rules are copied into every trajectory a mission

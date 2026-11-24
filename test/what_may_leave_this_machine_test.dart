@@ -30,7 +30,12 @@ void main() {
     FromPathsMatching.of(graph, [
       PathPattern.parse(
         '/v1.0/drives/b!d_1/items/01F/children',
-        optionsTakingWordLists: [QueryOptionName.parse(r'$select')!],
+        queryOptions: {
+          QueryOptionName.parse(r'$select')!: QueryOptionRule.of(
+            QueryOptionPresence.mustCarry,
+            ['name', 'size', 'lastModifiedDateTime', 'folder'],
+          )!,
+        },
       )!,
       PathPattern.parse('/v1.0/drives/b!d_1/items/01F:/{name}:/content')!,
     ])!,
@@ -549,17 +554,34 @@ void main() {
       return granted.grantedPathPrefix.value;
     }
 
-    test("reads the folder's listing, with at most a \$select", () {
-      expect(prefix(graph, '$folderAt/children'), '$folderAt/');
-      expect(
-        prefix(
-          graph,
-          '$folderAt/children?\$select=name,size,lastModifiedDateTime,folder',
-        ),
-        '$folderAt/',
-      );
-      expect(prefix(graph, '$folderAt/children?%24select=name'), '$folderAt/');
-    });
+    test(
+      "reads the folder's listing only with a \$select of chosen fields",
+      () {
+        expect(
+          prefix(
+            graph,
+            '$folderAt/children?\$select=name,size,lastModifiedDateTime,folder',
+          ),
+          '$folderAt/',
+        );
+        expect(
+          prefix(graph, '$folderAt/children?%24select=name'),
+          '$folderAt/',
+        );
+        // Each of these lists files with a downloadUrl, which downloads the
+        // file signed in as nobody: measured against Graph, or a field the
+        // rules didn't choose to show.
+        for (final listing in [
+          '$folderAt/children',
+          '$folderAt/children?\$select=*',
+          '$folderAt/children?\$select=name,content.downloadUrl',
+          '$folderAt/children?\$select=name,downloadUrl',
+          '$folderAt/children?\$select=name,%40microsoft.graph.downloadUrl',
+        ]) {
+          expect(prefix(graph, listing), isNull, reason: listing);
+        }
+      },
+    );
 
     test('reads a file in the folder by name, under its own prefix', () {
       const name = 'Incident%20report%20%232.docx';
@@ -672,36 +694,84 @@ void main() {
       expect(PathPattern.parse('/a/b:'), PathPattern.parse('/a/b%3A'));
       expect(PathPattern.parse('/a/b'), isNot(PathPattern.parse('/a/{name}')));
       final select = QueryOptionName.parse(r'$select')!;
+      PathPattern selecting(QueryOptionPresence presence, List<String> words) =>
+          PathPattern.parse(
+            '/a/b',
+            queryOptions: {select: QueryOptionRule.of(presence, words)!},
+          )!;
+      final may = QueryOptionPresence.mayCarry;
+      expect(selecting(may, ['a']), isNot(PathPattern.parse('/a/b')));
+      expect(selecting(may, ['a', 'b']), selecting(may, ['b', 'a']));
+      expect(selecting(may, ['a']), isNot(selecting(may, ['a', 'b'])));
+      expect(selecting(may, ['a']), isNot(selecting(may, ['b'])));
       expect(
-        PathPattern.parse('/a/b', optionsTakingWordLists: [select]),
-        isNot(PathPattern.parse('/a/b')),
+        selecting(may, ['a']),
+        isNot(selecting(QueryOptionPresence.mustCarry, ['a'])),
       );
     });
 
-    test('a query option carries words, once each', () {
+    test('a query option carries chosen words, once each', () {
       final pattern = PathPattern.parse(
         '/a/b',
-        optionsTakingWordLists: [
-          QueryOptionName.parse(r'$select')!,
-          QueryOptionName.parse('fields')!,
-        ],
+        queryOptions: {
+          QueryOptionName.parse(r'$select')!: QueryOptionRule.of(
+            QueryOptionPresence.mayCarry,
+            ['name', 'size'],
+          )!,
+          QueryOptionName.parse('fields')!: QueryOptionRule.of(
+            QueryOptionPresence.mayCarry,
+            ['x', 'y'],
+          )!,
+        },
       )!;
       String? prefix(String raw) => pattern.prefixMatching(path(raw))?.value;
       expect(prefix('/a/b'), '/a/');
       expect(prefix(r'/a/b?$select=name&fields=x,y'), '/a/');
+      expect(prefix(r'/a/b?$select=size,name'), '/a/');
       for (final raw in [
         '/a/b?',
         r'/a/b?$select',
         r'/a/b?$select=',
-        r'/a/b?$select=a&$select=b',
-        r'/a/b?$select=a,',
-        r'/a/b?$select=a%20b',
+        r'/a/b?$select=name&$select=size',
+        r'/a/b?$select=name,',
+        r'/a/b?$select=name%20size',
+        r'/a/b?$select=name,other',
+        r'/a/b?$select=Name',
         '/a/b?other=a',
       ]) {
         expect(prefix(raw), isNull, reason: raw);
       }
       for (final raw in ['', 'select\$', r'$$a', 'a-b', r'$']) {
         expect(QueryOptionName.parse(raw), isNull, reason: raw);
+      }
+    });
+
+    test('a query option a pattern must carry is never left off', () {
+      final pattern = PathPattern.parse(
+        '/a/b',
+        queryOptions: {
+          QueryOptionName.parse(r'$select')!: QueryOptionRule.of(
+            QueryOptionPresence.mustCarry,
+            ['name'],
+          )!,
+          QueryOptionName.parse('fields')!: QueryOptionRule.of(
+            QueryOptionPresence.mayCarry,
+            ['x'],
+          )!,
+        },
+      )!;
+      String? prefix(String raw) => pattern.prefixMatching(path(raw))?.value;
+      expect(prefix(r'/a/b?$select=name'), '/a/');
+      expect(prefix(r'/a/b?fields=x&$select=name'), '/a/');
+      expect(prefix('/a/b'), isNull);
+      expect(prefix('/a/b?fields=x'), isNull);
+    });
+
+    test('an option names at least one word, each letters only', () {
+      final may = QueryOptionPresence.mayCarry;
+      expect(QueryOptionRule.of(may, const []), isNull);
+      for (final word in ['', 'a,b', 'a.b', '*', '@a', 'a b']) {
+        expect(QueryOptionRule.of(may, [word]), isNull, reason: word);
       }
     });
 
@@ -794,9 +864,11 @@ void main() {
       'kind': 'addressesUnder',
       'prefix': prefix,
     };
-    final pattern = {
-      'path': '/a/{name}',
-      'optionsTakingWordLists': <Object?>[],
+    final pattern = {'path': '/a/{name}', 'queryOptions': <Object?>[]};
+    final option = {
+      'name': r'$select',
+      'presence': 'mustCarry',
+      'wordsFrom': ['name'],
     };
     final matching = {
       'kind': 'pathsMatching',
@@ -927,14 +999,43 @@ void main() {
             },
           for (final options in <Object?>[
             r'$select',
-            [r'$select=a'],
+            [r'$select'],
             [1],
             [null],
+            [<String, Object?>{}],
+            [
+              {...option, 'name': r'$select=a'},
+            ],
+            [
+              {...option, 'presence': 'always'},
+            ],
+            [
+              {...option, 'wordsFrom': <Object?>[]},
+            ],
+            [
+              {
+                ...option,
+                'wordsFrom': ['name', null],
+              },
+            ],
+            [
+              {
+                ...option,
+                'wordsFrom': ['name', 'content.downloadUrl'],
+              },
+            ],
+            [
+              {...option, 'match': 'prefix'},
+            ],
+            [option, option],
+            [
+              {...option}..remove('presence'),
+            ],
           ])
             {
               ...matching,
               'patterns': [
-                {...pattern, 'optionsTakingWordLists': options},
+                {...pattern, 'queryOptions': options},
               ],
             },
         ])

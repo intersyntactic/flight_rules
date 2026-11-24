@@ -2,7 +2,7 @@ import 'package:is_effects/is_effects.dart';
 
 /// The paths one kind of read may take on a site: a fixed number of
 /// segments, each a literal or a `{name}`, and the query options it may
-/// carry.
+/// or must carry.
 ///
 /// Written as a path, such as `/drives/b!D/items/01F:/{name}:/content`.
 /// A literal segment is compared decoded, as [PathPrefix] compares them,
@@ -12,17 +12,16 @@ import 'package:is_effects/is_effects.dart';
 /// fixed literal suffix, as `{name}:` does. There is no wildcard and no
 /// "any depth", so a pattern reaches exactly the paths it spells.
 final class PathPattern {
-  const PathPattern._(this.path, this._segments, this.optionsTakingWordLists);
+  const PathPattern._(this.path, this._segments, this.queryOptions);
 
-  /// [path] as a pattern whose query may carry each of
-  /// [optionsTakingWordLists] at most once, each with a comma-separated
-  /// list of words; with none, it carries no query. Null when [path] isn't
-  /// one: it must start with `/`, name at least two segments, so the
-  /// prefix a read is granted under is never the whole site, and start
-  /// with a literal.
+  /// [path] as a pattern whose query carries each of [queryOptions] as its
+  /// [QueryOptionRule] says, and nothing else; with none, it carries no
+  /// query. Null when [path] isn't one: it must start with `/`, name at
+  /// least two segments, so the prefix a read is granted under is never
+  /// the whole site, and start with a literal.
   static PathPattern? parse(
     String path, {
-    Iterable<QueryOptionName> optionsTakingWordLists = const [],
+    Map<QueryOptionName, QueryOptionRule> queryOptions = const {},
   }) {
     if (!path.startsWith('/')) return null;
     final segments = <_Segment>[];
@@ -35,14 +34,14 @@ final class PathPattern {
     return PathPattern._(
       path,
       List.unmodifiable(segments),
-      Set.unmodifiable(optionsTakingWordLists),
+      Map.unmodifiable(queryOptions),
     );
   }
 
   /// The pattern as it was written.
   final String path;
   final List<_Segment> _segments;
-  final Set<QueryOptionName> optionsTakingWordLists;
+  final Map<QueryOptionName, QueryOptionRule> queryOptions;
 
   /// The prefix a read of [path] is granted under when this pattern
   /// matches it, or null when it doesn't: [path] with its last segment
@@ -51,7 +50,7 @@ final class PathPattern {
   PathPrefix? prefixMatching(WebPath path) {
     final queryAt = path.value.indexOf('?');
     final raw = queryAt < 0 ? path.value : path.value.substring(0, queryAt);
-    if (queryAt >= 0 && !_allowsQuery(path.value.substring(queryAt + 1))) {
+    if (!_allowsQuery(queryAt < 0 ? null : path.value.substring(queryAt + 1))) {
       return null;
     }
     final rawSegments = raw.substring(1).split('/');
@@ -65,36 +64,48 @@ final class PathPattern {
     );
   }
 
-  bool _allowsQuery(String query) {
+  /// Whether [query], or no query when it is null, carries each option at
+  /// most once, only options [queryOptions] names, each with words its rule
+  /// allows, and every option a rule says it must carry.
+  bool _allowsQuery(String? query) {
     final seen = <QueryOptionName>{};
-    for (final pair in query.split('&')) {
+    for (final pair in query?.split('&') ?? const <String>[]) {
       final equalsAt = pair.indexOf('=');
       if (equalsAt < 0) return false;
       final name = _decodedQuery(pair.substring(0, equalsAt));
       final value = _decodedQuery(pair.substring(equalsAt + 1));
       final option = name == null ? null : QueryOptionName.parse(name);
-      if (option == null ||
+      final rule = queryOptions[option];
+      if (rule == null ||
           value == null ||
-          !optionsTakingWordLists.contains(option) ||
-          !seen.add(option) ||
-          !_wordList.hasMatch(value)) {
+          !seen.add(option!) ||
+          !rule._allowsValue(value)) {
         return false;
       }
     }
-    return true;
+    return queryOptions.entries.every(
+      (entry) =>
+          entry.value.presence != QueryOptionPresence.mustCarry ||
+          seen.contains(entry.key),
+    );
   }
 
   @override
   bool operator ==(Object other) =>
       other is PathPattern &&
       _sameSegments(other._segments, _segments) &&
-      other.optionsTakingWordLists.length == optionsTakingWordLists.length &&
-      other.optionsTakingWordLists.containsAll(optionsTakingWordLists);
+      other.queryOptions.length == queryOptions.length &&
+      queryOptions.entries.every(
+        (entry) => other.queryOptions[entry.key] == entry.value,
+      );
 
   @override
   int get hashCode => Object.hash(
     Object.hashAll(_segments),
-    Object.hashAllUnordered(optionsTakingWordLists),
+    Object.hashAllUnordered([
+      for (final entry in queryOptions.entries)
+        Object.hash(entry.key, entry.value),
+    ]),
   );
 
   @override
@@ -131,9 +142,50 @@ final class QueryOptionName {
   String toString() => value;
 }
 
-/// A comma-separated list of words, such as field names: no expression,
-/// so an option can only narrow what a read returns.
-final _wordList = RegExp(r'^[A-Za-z]+(,[A-Za-z]+)*$');
+/// Whether a read must carry a query option, or only may.
+enum QueryOptionPresence { mayCarry, mustCarry }
+
+/// What a [PathPattern] lets a read carry as one query option: a
+/// comma-separated list of words, each one of [wordsFrom], so an option
+/// can only narrow what a read returns to what the rules chose to show.
+///
+/// The words are an allow-list, never a pattern: a site can return what
+/// a word names in a spelling nobody tried, such as Graph handing out a
+/// signed-in-by-nobody `downloadUrl` for `$select=*` or
+/// `$select=name,content.downloadUrl`.
+final class QueryOptionRule {
+  const QueryOptionRule._(this.presence, this.wordsFrom);
+
+  /// The rule, or null when [wordsFrom] is empty or a word in it isn't
+  /// letters only.
+  static QueryOptionRule? of(
+    QueryOptionPresence presence,
+    Iterable<String> wordsFrom,
+  ) {
+    final words = Set<String>.unmodifiable(wordsFrom);
+    return words.isEmpty || !words.every(_word.hasMatch)
+        ? null
+        : QueryOptionRule._(presence, words);
+  }
+
+  final QueryOptionPresence presence;
+  final Set<String> wordsFrom;
+
+  bool _allowsValue(String value) => value.split(',').every(wordsFrom.contains);
+
+  @override
+  bool operator ==(Object other) =>
+      other is QueryOptionRule &&
+      other.presence == presence &&
+      other.wordsFrom.length == wordsFrom.length &&
+      other.wordsFrom.containsAll(wordsFrom);
+
+  @override
+  int get hashCode => Object.hash(presence, Object.hashAllUnordered(wordsFrom));
+}
+
+/// One word an option's value may list, such as a field name.
+final _word = RegExp(r'^[A-Za-z]+$');
 
 /// One segment of a [PathPattern].
 sealed class _Segment {
