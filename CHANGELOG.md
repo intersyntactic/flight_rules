@@ -1,3 +1,7 @@
+## 0.6.1
+
+- Depends on is_effects ^0.15.0. is_flight_rules uses none of what 0.15.0 changed (`Outcome`, `ModelReply`), so its own API is the same.
+
 ## 0.6.0
 
 - **Breaking:** `FlightRules` gains a required `givenTools`: the tools a trajectory is given, as is_tools_api `OneActionTool`s written inline, keyed by name in the order the rules list them. `FlightRules.of` returns null, and `fromJson` throws, when two share a name; `fromJson` also throws for a tool `OneActionTool.parse` refuses. On the wire, `"givenTools": [<tool>…]`, each tool in the shape `OneActionTool.toJson` writes. So 0.5.0's rules are not read.
