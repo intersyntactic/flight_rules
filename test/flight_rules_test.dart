@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:checked_json/checked_json.dart';
 import 'package:is_effects/is_effects.dart';
+import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart';
+import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
 import 'package:is_flight_rules/is_flight_rules.dart';
 import 'package:is_tools_api/is_tools_api.dart'
     show Fetch, Input, OneActionTool, ToolName;

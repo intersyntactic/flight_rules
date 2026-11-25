@@ -1,4 +1,4 @@
-import 'package:is_effects/is_effects.dart';
+import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
 
 /// The paths one kind of read may take on a site: a fixed number of
 /// segments, each a literal or a `{name}`, and the query options it may
