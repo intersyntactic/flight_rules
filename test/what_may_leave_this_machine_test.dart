@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:checked_json/checked_json.dart';
 import 'package:is_effects/is_effects.dart';
 import 'package:is_flight_rules/is_flight_rules.dart';
+import 'package:is_reply_vocabulary/is_reply_vocabulary.dart'
+    show RepliesInSlackConversation, RepliesUnderWebAddress, SlackChannelId;
 import 'package:test/test.dart';
 
 void main() {
@@ -171,7 +173,10 @@ void main() {
           signIn ?? bot,
           leasedNow: const {},
           pooled: const {},
-          replyEndpoint: replyEndpoint,
+          replyEndpoint: switch (replyEndpoint) {
+            final prefix? => RepliesUnderWebAddress(prefix),
+            null => null,
+          },
         )
         ?.grant;
 
@@ -258,7 +263,7 @@ void main() {
     }) {
       final replyEndpoint = at ?? endpoint;
       final signIn = rules.signInForReply(
-        replyEndpoint: replyEndpoint,
+        replyEndpoint: RepliesUnderWebAddress(replyEndpoint),
         leasedNow: leasedNow,
         pooled: pooled,
       );
@@ -270,7 +275,7 @@ void main() {
             signIn,
             leasedNow: leasedNow,
             pooled: pooled,
-            replyEndpoint: replyEndpoint,
+            replyEndpoint: RepliesUnderWebAddress(replyEndpoint),
           ),
           isNotNull,
           reason: 'the airlock must grant a reply as the sign-in chosen',
@@ -331,6 +336,65 @@ void main() {
     });
   });
 
+  group('a reply in a Slack conversation', () {
+    final slack = Origin.parse('https://slack.com')!;
+    final inChannel = RepliesInSlackConversation(
+      origin: slack,
+      channel: SlackChannelId.parse('C0123ABC')!,
+    );
+    final replyingOnSlack = WhatMayLeaveThisMachine(
+      modelSignInsCallsMayGoOutAs: [claudeTeam],
+      fetchesMayReach: const [],
+      webRequestsMayReach: [
+        GrantToMakeWebRequests(
+          ToOwnReplyEndpoint.of([slack])!,
+          GoesAsSignIn(bot),
+        ),
+      ],
+      programsNetwork: ProgramsNetwork.noNetworkOfTheirOwn,
+    );
+
+    test('goes as the reply grant on its origin', () {
+      expect(
+        replyingOnSlack.signInForReply(
+          replyEndpoint: inChannel,
+          leasedNow: const {},
+          pooled: const {},
+        ),
+        bot,
+      );
+    });
+
+    test('goes as no one when no reply grant names its origin', () {
+      expect(
+        rules.signInForReply(
+          replyEndpoint: inChannel,
+          leasedNow: const {},
+          pooled: const {},
+        ),
+        isNull,
+      );
+    });
+
+    test('lets no raw web request through, since Slack names the '
+        'conversation in the body', () {
+      for (final raw in ['/api/chat.postMessage', '/']) {
+        expect(
+          replyingOnSlack.webRequestsGrantFor(
+            slack,
+            path(raw),
+            bot,
+            leasedNow: const {},
+            pooled: const {},
+            replyEndpoint: inChannel,
+          ),
+          isNull,
+          reason: raw,
+        );
+      }
+    });
+  });
+
   test('each grant says the prefix it was granted under', () {
     expect(
       rules
@@ -376,7 +440,7 @@ void main() {
             bot,
             leasedNow: const {},
             pooled: const {},
-            replyEndpoint: endpoint,
+            replyEndpoint: RepliesUnderWebAddress(endpoint),
           )
           ?.grantedPathPrefix,
       endpoint.pathPrefix,
