@@ -1,5 +1,7 @@
 import 'package:checked_json/checked_json.dart';
 import 'package:is_effects/is_effects.dart';
+import 'package:is_reply_vocabulary/is_reply_vocabulary.dart'
+    show ReplyEndpoint, RepliesInSlackConversation, RepliesUnderWebAddress;
 
 import 'path_pattern.dart';
 import 'read_strictly.dart';
@@ -130,7 +132,11 @@ final class WhatMayLeaveThisMachine {
   /// pool, whoever holds it, since a bot taken out of a pool must not
   /// become grantable by name while a lease on it may still run.
   /// [replyEndpoint] is where replies to the event that started this
-  /// trajectory go, or null when no event did.
+  /// trajectory go, or null when no event did. A [ToOwnReplyEndpoint] grant
+  /// lets a request through only under a [RepliesUnderWebAddress] prefix;
+  /// for a [RepliesInSlackConversation] it lets none through, since Slack
+  /// names the conversation in the body, so a Slack reply leaves only as a
+  /// reply the airlock builds from the endpoint itself.
   ///
   /// A request under no sign-in matches only a [GoesAsNobody] grant, so a
   /// grant to reach a site anonymously never lets the trajectory make
@@ -147,7 +153,7 @@ final class WhatMayLeaveThisMachine {
     SignIn? signIn, {
     required Map<BotPool, SignIn> leasedNow,
     required Set<SignIn> pooled,
-    required AddressPrefix? replyEndpoint,
+    required ReplyEndpoint? replyEndpoint,
   }) {
     for (final goesAs in _goesAsFor(signIn, leasedNow, pooled)) {
       for (final grant in webRequestsMayReach) {
@@ -162,19 +168,25 @@ final class WhatMayLeaveThisMachine {
   /// The sign-in a reply to [replyEndpoint] can go as: one a
   /// [ToOwnReplyEndpoint] grant on [replyEndpoint]'s origin goes as, by
   /// name before by lease, as [webRequestsGrantFor] prefers, so every
-  /// request the loop builds under the endpoint as it is granted. Null when
+  /// request the loop builds under a [RepliesUnderWebAddress] goes as it is
+  /// granted. For a [RepliesInSlackConversation], whether and as whom the
+  /// trajectory may reply in its conversation at all. Null when
   /// none can. A reply grant under no sign-in is never chosen, since a
   /// reply is posted as someone. [leasedNow] and [pooled] are as
   /// [webRequestsGrantFor] takes them.
   SignIn? signInForReply({
-    required AddressPrefix replyEndpoint,
+    required ReplyEndpoint replyEndpoint,
     required Map<BotPool, SignIn> leasedNow,
     required Set<SignIn> pooled,
   }) {
+    final origin = switch (replyEndpoint) {
+      RepliesUnderWebAddress(:final prefix) => prefix.origin,
+      RepliesInSlackConversation(:final origin) => origin,
+    };
     final replyGrantsGoAs = [
       for (final grant in webRequestsMayReach)
         if (grant.to case ToOwnReplyEndpoint(:final onOneOf)
-            when onOneOf.contains(replyEndpoint.origin))
+            when onOneOf.contains(origin))
           grant.goesAs,
     ];
     for (final goesAs in replyGrantsGoAs) {
@@ -470,7 +482,7 @@ sealed class WhereWebRequestsGo {
   PathPrefix? _prefixCovering(
     Origin site,
     WebPath path,
-    AddressPrefix? replyEndpoint,
+    ReplyEndpoint? replyEndpoint,
   );
 
   JsonObject _toJson();
@@ -486,7 +498,7 @@ final class ToAddressesUnder extends WhereWebRequestsGo {
   PathPrefix? _prefixCovering(
     Origin site,
     WebPath path,
-    AddressPrefix? replyEndpoint,
+    ReplyEndpoint? replyEndpoint,
   ) => prefix.covers(site, path) ? prefix.pathPrefix : null;
 
   @override
@@ -524,12 +536,14 @@ final class ToOwnReplyEndpoint extends WhereWebRequestsGo {
   PathPrefix? _prefixCovering(
     Origin site,
     WebPath path,
-    AddressPrefix? replyEndpoint,
+    ReplyEndpoint? replyEndpoint,
   ) => switch (replyEndpoint) {
-    final endpoint?
-        when onOneOf.contains(endpoint.origin) && endpoint.covers(site, path) =>
-      endpoint.pathPrefix,
-    _ => null,
+    RepliesUnderWebAddress(:final prefix)
+        when onOneOf.contains(prefix.origin) && prefix.covers(site, path) =>
+      prefix.pathPrefix,
+    // Slack names the conversation in the request's body, which these rules
+    // never read, so no raw request to Slack is confined to its conversation.
+    RepliesUnderWebAddress() || RepliesInSlackConversation() || null => null,
   };
 
   @override

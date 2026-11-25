@@ -1,3 +1,9 @@
+## 0.8.0
+
+- **Breaking:** `signInForReply` takes is_reply_vocabulary's `ReplyEndpoint`, and `webRequestsGrantFor`'s `replyEndpoint` is a `ReplyEndpoint?`; both took an `AddressPrefix`. A Teams-style endpoint is `RepliesUnderWebAddress(prefix)` and is decided as before.
+- A `RepliesInSlackConversation` endpoint: `signInForReply` returns the sign-in of a `ToOwnReplyEndpoint` grant naming its origin, as for any reply. `webRequestsGrantFor` lets no raw web request through under it, since Slack names the conversation in the request's body and these rules never read bodies. A Slack reply leaves only as one the airlock builds from the endpoint.
+- Depends on is_reply_vocabulary ^0.2.0. The flight-rules.json format is unchanged.
+
 ## 0.7.0
 
 - **Breaking:** `givenTools` is keyed by is_tools_api's `ToolName`, not `String`, since a `OneActionTool`'s `name` is now a `ToolName`. Look a tool up with `givenTools[ToolName.of('list_folder')]`.
