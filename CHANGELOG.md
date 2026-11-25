@@ -1,3 +1,9 @@
+## 0.9.0
+
+- **Breaking:** `ReplyEndpoint`, which `signInForReply` and `webRequestsGrantFor` take, is is_conversation_reply_vocabulary's, the package is_reply_vocabulary was renamed to. A program passing one from a package still on is_reply_vocabulary must move to the new name too.
+- Depends on is_effects ^0.17.0, and directly on is_web_address_vocabulary and is_sign_in_vocabulary, since is_effects no longer re-exports them. Import `Origin`, `WebPath`, `PathPrefix` and `AddressPrefix` from is_web_address_vocabulary, and `SignIn` from is_sign_in_vocabulary.
+- The flight-rules.json format is unchanged.
+
 ## 0.8.0
 
 - **Breaking:** `signInForReply` takes is_reply_vocabulary's `ReplyEndpoint`, and `webRequestsGrantFor`'s `replyEndpoint` is a `ReplyEndpoint?`; both took an `AddressPrefix`. A Teams-style endpoint is `RepliesUnderWebAddress(prefix)` and is decided as before.
