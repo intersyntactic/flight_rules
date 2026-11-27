@@ -90,7 +90,9 @@ those rules until it closes. Two ways forward:
   and the airlock decides each action against the newest version, matching
   `where` itself (with a function shared with the docking station). A
   change reaches every open thread at its next action. The record names the
-  version and the row.
+  version and the row. A row for a single thread also works again under
+  live, since a row written after the thread exists reaches it. So
+  choosing frozen or live settles that too.
 
 ### allows
 
