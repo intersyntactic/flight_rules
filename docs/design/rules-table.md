@@ -46,9 +46,21 @@ because the airlock can only enforce what it has code to check.
 - `Person(name)`: a person from the people list, under any of their accounts.
 
 There is no row keyed by a bare `ActorId`: Nick wants one person, not one per
-account. Roles (such as a mission commander) wait for Nick's ruling on loop-launcher's
-task 57: whether the commander is a fixed role per mission, and who
-appoints it.
+account.
+
+### The commander
+
+Nick ruled on 28 Nov (loop-launcher's task 57) that each mission has exactly
+one commander, named in a `commander` field of its rules. Left unset, it is
+the coordinator bot of whoever started the mission (such as CAM). Every
+crossing to another mission goes out through the commander. The
+`SendToMission` rows decide whether it may go and what it needs first.
+
+The commander is an agent, not a person, so it never appears in `who`. A
+crossing row's `who` names the people whose words may be sent, and its
+`OkayFrom` names the people who must okay them. Who may change the
+commander is whoever edits the rules file. Under live rules a change
+reaches open threads; under frozen rules it reaches only new ones.
 
 ### where
 
@@ -134,7 +146,7 @@ If live:
   replace `modelSignInsCallsMayGoOutAs`: the sign-ins calls may go out as
   are the ones the rows name.
 - `SendToMission(to)`: a message may cross to the mission `to`, or to any
-  mission. Who sends it is the open commander question.
+  mission, sent by the mission's commander.
 
 ### needs first
 
@@ -235,11 +247,8 @@ All of these are breaking, so they should ship as one batch, in one window.
 
 ## Open
 
-1. Roles: is the commander a fixed role per mission, and who appoints it?
-   (Nick, via loop-launcher's task 57.) Until then, crossing rows can name
-   only `anyone` or a person.
-2. Frozen or live (above). Under frozen, `where` never reaches the airlock;
+1. Frozen or live (above). Under frozen, `where` never reaches the airlock;
    under live, the airlock matches it.
-3. Do fetch and web-request grants move into the table too? They have no
+2. Do fetch and web-request grants move into the table too? They have no
    `who`, because a tool's fetch is the agent's, not a person's. This draft
    leaves them where they are.
