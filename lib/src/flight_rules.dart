@@ -1,6 +1,6 @@
 import 'package:checked_json/checked_json.dart';
 import 'package:is_effects/is_effects.dart';
-import 'package:is_tools_api/is_tools_api.dart'
+import 'package:is_tool_definition_vocabulary/is_tool_definition_vocabulary.dart'
     show Fetch, OneActionTool, ToolName;
 
 import 'read_strictly.dart';
