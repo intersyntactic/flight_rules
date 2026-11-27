@@ -26,7 +26,7 @@ trajectory never needs a program it could not run. A program it may run can
 be missing from a machine; one it needs can't, and the check against the
 machine's programs happens when the trajectory starts.
 
-`givenTools` are is_tools_api `OneActionTool`s, written inline, so the
+`givenTools` are is_tool_definition_vocabulary `OneActionTool`s, written inline, so the
 admission that starts a trajectory records exactly what it was given. They
 are keyed by `ToolName` in the order listed, and no two share a name, since a model
 calls a tool by name. A tool adds no reach: the airlock still decides each

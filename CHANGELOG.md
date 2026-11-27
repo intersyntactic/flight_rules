@@ -1,7 +1,8 @@
 ## 0.10.0
 
 - **Breaking:** `ReplyEndpoint` is is_conversation_vocabulary's, which is_conversation_reply_vocabulary was merged into. A program passing one must import it from there too.
-- Depends on checked_json ^0.3.0.
+- **Breaking:** `OneActionTool`, `Fetch` and `ToolName`, which `givenTools` holds, are is_tool_definition_vocabulary's, the package is_tools_api was renamed to.
+- Depends on checked_json ^0.3.0 and is_effects ^0.18.0.
 - The flight-rules.json format is unchanged.
 
 ## 0.9.0
