@@ -115,7 +115,10 @@ If live:
 - **A call whose choice is withdrawn (Nick's call):**
   - *falls back* to the newest `startingModel`, recorded as
     `FromStartingModel`, and the person is told their choice no longer
-    holds; or
+    holds. The airlock can't reply, so its decision records that the
+    choice was withdrawn, and the program that posts the trajectory's
+    replies reads that and tells the person (the loop or the docking
+    station; to settle with them); or
   - *is refused*, and the trajectory waits until someone chooses again.
 
   The recommendation is to fall back and tell the person. A trajectory
@@ -193,9 +196,9 @@ work done from here.
      `everyone-sonnet` and `hart-claude-anything` cover Hart choosing
      Sonnet), so a second search could name a different row than the
      decision did.
-   - null: refused. Under frozen rules that can't happen once a choice is
-     allowed. Under live rules it happens when the row the decision named
-     is gone from the newest version.
+   - null: refused. Under frozen rules this can't happen. Under live rules
+     it happens only if Nick picks refuse-on-withdrawal, when the named row
+     no longer covers the choice.
 
    So every call's record says which applied, and "why" has one answer.
 
