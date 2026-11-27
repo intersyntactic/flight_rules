@@ -94,6 +94,34 @@ those rules until it closes. Two ways forward:
   live, since a row written after the thread exists reaches it. So
   choosing frozen or live settles that too.
 
+If live:
+
+- **Only the table and the people list are live.** A trajectory's makeup
+  (`programsItMayRun`, `programsItNeeds`, `givenTools`, fetch and
+  web-request grants) stays fixed at admission, so a new version can't take
+  away a program partway through a step.
+- **The rules entry is its own logbook kind**, which the sender table lets
+  only the docking station's user write. The airlock decides each action
+  against the newest rules entry written before that action's proposal. The
+  logbook keeps one order, so "newest" always has one answer.
+- **A row is the same row across versions when it has the same name.** At
+  each call the airlock looks up the row the decision named, by name, in
+  the newest version, and checks it still covers that person and those
+  settings. Fixing a typo keeps every choice made under the row. Narrowing
+  the row withdraws only the choices it no longer covers. Removing or
+  renaming it withdraws them all.
+- **`FromStartingModel` names the rules version it came from**, since
+  `startingModel` can change between versions too.
+- **A call whose choice is withdrawn (Nick's call):**
+  - *falls back* to the newest `startingModel`, recorded as
+    `FromStartingModel`, and the person is told their choice no longer
+    holds; or
+  - *is refused*, and the trajectory waits until someone chooses again.
+
+  The recommendation is to fall back and tell the person. A trajectory
+  that stalls until someone happens to look is worse than one that keeps
+  going on the default and says why.
+
 ### allows
 
 - `ChooseCallSettings(signIn, models, effortUpTo)`: the person may choose
