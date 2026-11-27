@@ -29,7 +29,7 @@ work: `webRequestsGrantFor` returns the grant, not a yes.
 | Column | Holds | Cases |
 |---|---|---|
 | who | whose action the row covers | `anyone` (any named person in the conversation), or a person from the people list |
-| where | which conversation | `anywhere`, a mission (a channel), or one thread in it |
+| where | which conversation | `anywhere`, or a mission (a channel) |
 | allows | what the row lets them do | choose call settings, or send to another mission |
 | needs first | what must happen first | nothing, an okay from someone, or a Projection |
 
@@ -57,15 +57,40 @@ one trajectory, as the docking station's README puts it.
 
 - `Anywhere`
 - `InMission(AddressInExternalSystem)`: any thread of that channel.
-- `InThread(AddressInExternalSystem)`: one thread.
+There is no single-thread case. A thread's address exists only once someone
+has posted in it, and that first post is what admits its trajectory, so a
+row for one thread could only ever be written too late.
 
 The docking station's rules file is already a table with only this column:
 `default` is an `Anywhere` row, and `byMissionAddress` holds `InMission`
-rows. This design adds the other three columns. The docking station
-resolves `where` when it admits a trajectory: it copies the rows whose
-`where` covers that thread into the trajectory's `FlightRules`. So the
-airlock still sees only its own trajectory's rules, and the admission
-records exactly those rows, as it records the rest of the rules today.
+rows. This design adds the other three columns. A row whose `InMission`
+names a channel the docking station doesn't let in makes the file
+unreadable, as it does today.
+
+### Each row has a name
+
+Every row carries a `RuleName`, unique in the file, such as
+`hart-opus-anywhere`. The airlock records that name as what allowed an
+action, so "why was this allowed?" leads back to a line someone wrote, wherever
+the row was copied to.
+
+### When rules change: frozen or live (Nick's call)
+
+Today the docking station reads the rules file once, at service start, and
+copies the rules into each trajectory's admission. A trajectory runs on
+those rules until it closes. Two ways forward:
+
+- **Frozen (as today).** The docking station copies the rows whose `where`
+  covers the trajectory, and the people list, into its `FlightRules` at
+  admission. It's simple and every admission records its whole rules. But a
+  change, whether a grant to Hart, a grant taken away, or an account linked,
+  reaches only threads started after the service restarts. An open thread
+  keeps the old rows, including a grant that was taken away.
+- **Live.** The rules file is written to the logbook as a versioned entry,
+  and the airlock decides each action against the newest version, matching
+  `where` itself (with a function shared with the docking station). A
+  change reaches every open thread at its next action. The record names the
+  version and the row.
 
 ### allows
 
@@ -130,13 +155,17 @@ work done from here.
 
 ```
 rules:
-  - who: anyone   where: anywhere
+  - name: everyone-sonnet
+    who: anyone   where: anywhere
     allows: choose claude-team, models: [claude-sonnet-5-5], effort up to high
-  - who: hart     where: anywhere
+  - name: hart-claude-anything
+    who: hart     where: anywhere
     allows: choose claude-team, any model, any effort
-  - who: hart     where: in mission teams:19:finance@thread.v2
+  - name: hart-gpt-in-finance
+    who: hart     where: in mission teams:19:finance@thread.v2
     allows: choose openai-team, models: [gpt-5]
-  - who: anyone   where: in mission teams:19:legal@thread.v2
+  - name: legal-to-finance
+    who: anyone   where: in mission teams:19:legal@thread.v2
     allows: send to mission teams:19:finance@thread.v2
     needs first: okay from hart
 ```
@@ -148,7 +177,7 @@ rules:
 | shapes | `PersonName`, the people list | the shapes session (none listed as running on 27 Nov) |
 | flight_rules | the row types, `callSettingsGrantFor`; rows replace `modelSignInsCallsMayGoOutAs` | flight-rules-55 |
 | airlock_api, airlock | the settings entry, binding, `ModelCall` without model and sign-in | airlock-api-b2, airlock-d5 |
-| docking_station | the rules file's people list and rows; resolving `where` at admission | docking-station-97 |
+| docking_station | the rules file's people list and named rows; matching `where` at admission (frozen) or writing the file to the logbook (live) | docking-station-97 |
 | infra | a new rules-file format, so an infra window and a fresh logbook (the one-shape rule) | infra-95 |
 
 All of these are breaking, so they should ship as one batch, in one window.
@@ -158,9 +187,8 @@ All of these are breaking, so they should ship as one batch, in one window.
 1. Roles: is the commander a fixed role per mission, and who appoints it?
    (Nick, via loop-launcher's task 57.) Until then, crossing rows can name
    only `anyone` or a person.
-2. Is `where` needed in `FlightRules` at all, once the docking station
-   resolves it? This draft says no: rows reach the airlock with `where`
-   already applied.
+2. Frozen or live (above). Under frozen, `where` never reaches the airlock;
+   under live, the airlock matches it.
 3. Do fetch and web-request grants move into the table too? They have no
    `who`, because a tool's fetch is the agent's, not a person's. This draft
    leaves them where they are.
