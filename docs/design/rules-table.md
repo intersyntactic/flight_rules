@@ -62,6 +62,12 @@ crossing row's `who` names the people whose words may be sent, and its
 commander is whoever edits the rules file. Under live rules a change
 reaches open threads; under frozen rules it reaches only new ones.
 
+The airlock's decision on a crossing records the commander that sent it,
+as its `ActorId` (an `agent:` id), beside the row's name and the
+`PersonName`s it resolved for `who` and `OkayFrom`. The `commander` field can
+change between rules versions, so the record names the agent itself, not
+"the commander", and still answers "who sent this" after the field changes.
+
 ### where
 
 A mission is a channel (or a chat with no threads), and each thread in it is
