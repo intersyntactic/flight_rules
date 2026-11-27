@@ -11,7 +11,7 @@ environment:
 dependencies:
   checked_json: ^0.3.0
   is_conversation_vocabulary: ^0.1.0
-  is_effects: ^0.17.0
+  is_effects: ^0.18.0
   is_sign_in_vocabulary: ^0.1.0
   is_tools_api: ^0.5.0
   is_web_address_vocabulary: ^0.1.2
