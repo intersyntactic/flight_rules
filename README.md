@@ -147,7 +147,7 @@ new, can let a trajectory post as a bot leased to another.
   reply names the role, and the airlock passes in the endpoint from the
   trajectory's start entry. The endpoint comes from an inbound event, so
   the grant names the origins it may be on, and never none. The endpoint is
-  is_conversation_reply_vocabulary's `ReplyEndpoint`. Under a `RepliesUnderWebAddress`,
+  is_conversation_vocabulary's `ReplyEndpoint`. Under a `RepliesUnderWebAddress`,
   as Teams takes replies, the grant lets through web requests under the
   endpoint's prefix. Under a `RepliesInSlackConversation` it lets none
   through: Slack names the conversation in the request's body, which these
