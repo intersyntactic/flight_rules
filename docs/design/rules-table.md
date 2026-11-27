@@ -125,7 +125,9 @@ A person's name, with every account that is theirs. The list lives in the
 rules file. Only whoever edits that file can link two accounts, because
 linking an account to `hart` hands it Hart's permissions. An account may
 appear under at most one person. A row naming a person not on the list
-makes the file unreadable, as an unknown program does today.
+makes the file unreadable, as an unknown program does today. A decision
+records both the `ActorId` and the `PersonName` it resolved to, so the
+logbook answers "for whom" even after the list changes.
 
 The types, a `PersonName` and the list, belong beside `ActorId` in is_shapes,
 whose doc already plans "a table beside them" for joining accounts. That
@@ -134,22 +136,38 @@ work done from here.
 
 ## Binding call settings
 
-1. A person chooses settings in the conversation (the More options dialog,
-   or the agent proposing "switch to Opus" and the person accepting). The
-   docking station turns that into an event whose `from` is the person's
-   `ActorId`, read from what they wrote, never from the loop.
-2. The airlock decides it against the trajectory's rows. It finds the person
-   for that account, then a `ChooseCallSettings` row that covers them.
-   Allowed, it writes a settings entry: the settings, who chose them, and the
-   row that allowed it. Refused, nothing changes.
+1. A person chooses settings in the conversation: the More options dialog,
+   or the agent proposing "switch to Opus" and the person accepting. The
+   docking station writes a **settings choice**, a logbook kind of its own,
+   holding the exact settings and the person's `ActorId` from the event they
+   wrote. The logbook's sender table lets only the docking station's user
+   write that kind, so the loop can't write one. An acceptance carries the
+   exact settings it accepts, so a "yes" can't bind something the loop
+   swapped in.
+2. The airlock reads choosers only from that kind. It finds the person for
+   the account, then a `ChooseCallSettings` row that covers them. If one
+   does, it writes its decision: the settings, the chooser's `ActorId`, the
+   `PersonName` it resolved to, the row's name, and the choice it answers.
+   If none does, nothing changes.
 3. Every model call takes its sign-in, model and effort from the newest
-   settings entry, or from `startingModel` when there is none. The loop no
-   longer sends them (airlock-api's breaking `ModelCall` change).
-4. At each call, `WhatMayLeaveThisMachine.allowsModelCall(signIn) → bool`
-   becomes `callSettingsGrantFor(newestSettings, chooser) → row?`. It
-   returns the row that still allows those settings for that person, or
-   null. So a call can never go out on settings that no row allows, and the
-   record of each call names its row.
+   allowed choice, or from `startingModel` when there is none. The loop no
+   longer sends them: `ModelCall` shrinks to its request (airlock-api's
+   breaking change).
+4. At each call, `allowsModelCall(signIn) → bool` becomes
+   `callSettingsGrantFor(…) → CallSettingsGrant?`, a sealed result:
+   - `FromStartingModel`: no choice was made, and the call goes as the
+     rules file's `startingModel`, granted by whoever wrote the file.
+   - `ChosenUnderRow(decision)`: the call points at the airlock's decision
+     on the newest choice, which already names its row. It doesn't search
+     the rows again. Rows overlap (in the examples below, both
+     `everyone-sonnet` and `hart-claude-anything` cover Hart choosing
+     Sonnet), so a second search could name a different row than the
+     decision did.
+   - null: refused. Under frozen rules that can't happen once a choice is
+     allowed. Under live rules it happens when the row the decision named
+     is gone from the newest version.
+
+   So every call's record says which applied, and "why" has one answer.
 
 ## Examples
 
