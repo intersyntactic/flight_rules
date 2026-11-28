@@ -12,7 +12,7 @@ dependencies:
   checked_json: ^0.4.0
   is_conversation_vocabulary: ^0.2.0
   is_effects: ^0.20.0
-  is_sign_in_vocabulary: ^0.1.1
+  is_sign_in_vocabulary: ^0.1.2
   is_tool_definition_vocabulary: ^0.7.0
   is_web_address_vocabulary: ^0.1.2
 
