@@ -333,8 +333,8 @@ What this costs:
   mission. A file that narrows has to be rewritten as `InMission` rows for
   every mission but the narrowed one, so a new channel reaches nothing until
   someone writes its row. That fails closed, which suits fetches, but it's
-  more to write. Before the window, infra checks the live file for a
-  narrowing override.
+  more to write. The live file has no per-mission overrides at all (infra,
+  28 Nov), so converting it needs only the default's rows.
 - **Admission no longer lists everything a thread could reach.** "What could
   this thread reach at time T?" is answered instead by the rows whose
   `where` covers it in the rules version that was newest at T. That's one
