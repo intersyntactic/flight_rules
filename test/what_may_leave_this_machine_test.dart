@@ -6,7 +6,7 @@ import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart';
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
 import 'package:is_flight_rules/is_flight_rules.dart';
 import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
-    show RepliesInSlackConversation, RepliesUnderWebAddress, SlackChannelId;
+    show PinnedBodyFields, RepliesUnderWebAddress, RepliesWithPinnedBodyFields;
 import 'package:test/test.dart';
 
 void main() {
@@ -338,12 +338,13 @@ void main() {
     });
   });
 
-  group('a reply in a Slack conversation', () {
+  group('a reply that names its conversation in the body', () {
     final slack = Origin.parse('https://slack.com')!;
-    final inChannel = RepliesInSlackConversation(
+    final inChannel = RepliesWithPinnedBodyFields.at(
       origin: slack,
-      channel: SlackChannelId.parse('C0123ABC')!,
-    );
+      path: path('/api/chat.postMessage'),
+      pinned: PinnedBodyFields.of({'channel': 'C0123ABC'})!,
+    )!;
     final replyingOnSlack = WhatMayLeaveThisMachine(
       modelSignInsCallsMayGoOutAs: [claudeTeam],
       fetchesMayReach: const [],
@@ -378,8 +379,8 @@ void main() {
       );
     });
 
-    test('lets no raw web request through, since Slack names the '
-        'conversation in the body', () {
+    test('lets no raw web request through, even to its own address, since '
+        'these rules never read the body', () {
       for (final raw in ['/api/chat.postMessage', '/']) {
         expect(
           replyingOnSlack.webRequestsGrantFor(
