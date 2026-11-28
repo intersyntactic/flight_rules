@@ -1,6 +1,8 @@
 # The rules table: per-person, per-conversation permissions
 
-Status: draft for review by Nick and airlock-api-b2. Nothing is built yet.
+Status: for review by Nick and airlock-api-b2. Nothing is built yet. Rules
+are live, and a withdrawn choice falls back and tells the person (Nick, 28
+Nov). One question is open, at the end.
 
 ## What Nick asked for (27 Nov 2026)
 
@@ -59,8 +61,8 @@ crossing to another mission goes out through the commander. The
 The commander is an agent, not a person, so it never appears in `who`. A
 crossing row's `who` names the people whose words may be sent, and its
 `OkayFrom` names the people who must okay them. Who may change the
-commander is whoever edits the rules file. Under live rules a change
-reaches open threads; under frozen rules it reaches only new ones.
+commander is whoever edits the rules file, and since rules are live, the
+change reaches open threads at their next crossing.
 
 The airlock's decision on a crossing records the commander that sent it,
 as its `ActorId` (an `agent:` id), beside the row's name and the
@@ -75,9 +77,10 @@ one trajectory, as the docking station's README puts it.
 
 - `Anywhere`
 - `InMission(AddressInExternalSystem)`: any thread of that channel.
-There is no single-thread case. A thread's address exists only once someone
-has posted in it, and that first post is what admits its trajectory, so a
-row for one thread could only ever be written too late.
+- `InThread(AddressInExternalSystem)`: one thread. A thread's address
+  exists only once someone has posted in it, so this row is always written
+  after its trajectory is admitted. Live rules are what make it reach the
+  thread: the airlock reads the newest rules at every action.
 
 The docking station's rules file is already a table with only this column:
 `default` is an `Anywhere` row, and `byMissionAddress` holds `InMission`
@@ -92,27 +95,19 @@ Every row carries a `RuleName`, unique in the file, such as
 action, so "why was this allowed?" leads back to a line someone wrote, wherever
 the row was copied to.
 
-### When rules change: frozen or live (Nick's call)
+### When rules change: live (Nick, 28 Nov)
 
 Today the docking station reads the rules file once, at service start, and
-copies the rules into each trajectory's admission. A trajectory runs on
-those rules until it closes. Two ways forward:
+copies the rules into each trajectory's admission, so a change, including a
+grant taken away, reaches only threads started after a restart. That was
+the alternative, called frozen. It was turned down because a permission
+taken away has to reach the threads already open.
 
-- **Frozen (as today).** The docking station copies the rows whose `where`
-  covers the trajectory, and the people list, into its `FlightRules` at
-  admission. It's simple and every admission records its whole rules. But a
-  change, whether a grant to Hart, a grant taken away, or an account linked,
-  reaches only threads started after the service restarts. An open thread
-  keeps the old rows, including a grant that was taken away.
-- **Live.** The rules file is written to the logbook as a versioned entry,
-  and the airlock decides each action against the newest version, matching
-  `where` itself (with a function shared with the docking station). A
-  change reaches every open thread at its next action. The record names the
-  version and the row. A row for a single thread also works again under
-  live, since a row written after the thread exists reaches it. So
-  choosing frozen or live settles that too.
-
-If live:
+Instead, the rules file is written to the logbook as a versioned entry, and
+the airlock decides each action against the newest version. It matches
+`where` itself, with a function shared with the docking station. A change
+reaches every open thread at its next action. The record names the version
+and the row.
 
 - **Only the table and the people list are live.** A trajectory's makeup
   (`programsItMayRun`, `programsItNeeds`, `givenTools`, fetch and
@@ -130,18 +125,18 @@ If live:
   renaming it withdraws them all.
 - **`FromStartingModel` names the rules version it came from**, since
   `startingModel` can change between versions too.
-- **A call whose choice is withdrawn (Nick's call):**
-  - *falls back* to the newest `startingModel`, recorded as
-    `FromStartingModel`, and the person is told their choice no longer
-    holds. The airlock can't reply, so its decision records that the
-    choice was withdrawn, and the program that posts the trajectory's
-    replies reads that and tells the person (the loop or the docking
-    station; to settle with them); or
-  - *is refused*, and the trajectory waits until someone chooses again.
-
-  The recommendation is to fall back and tell the person. A trajectory
-  that stalls until someone happens to look is worse than one that keeps
-  going on the default and says why.
+- **A call whose choice is withdrawn falls back and tells the person**
+  (Nick, 28 Nov). It goes as the newest `startingModel`, recorded as
+  `FromStartingModel`. The airlock can't reply, so its decision records
+  that the choice was withdrawn. The program that posts the trajectory's
+  replies reads that and tells the person; whether that's the loop or the
+  docking station is still to settle with them. The alternative, refusing
+  the call until someone chooses again, was turned down: a trajectory that
+  stalls until someone happens to look is worse than one that keeps going
+  on the default and says why.
+- **Readers accept the previous rules format too** (airlock-api's task 126,
+  in this batch on Nick's ruling of 28 Nov), since under live rules the
+  file changes while threads run.
 
 ### allows
 
@@ -214,10 +209,12 @@ work done from here.
      `everyone-sonnet` and `hart-claude-anything` cover Hart choosing
      Sonnet), so a second search could name a different row than the
      decision did.
-   - null: refused. Under frozen rules this can't happen. Under live rules
-     it happens only if Nick picks refuse-on-withdrawal, when the named row
-     no longer covers the choice.
+   - `WithdrawnToStartingModel(decision, version)`: the decision's row no
+     longer covers the choice in the newest rules version, so the call goes
+     as that version's `startingModel`, and the record says which choice
+     was withdrawn so the person can be told.
 
+   It never returns null for a model call: a withdrawn choice falls back.
    So every call's record says which applied, and "why" has one answer.
 
 ## Examples
@@ -246,15 +243,14 @@ rules:
 | shapes | `PersonName`, the people list | the shapes session (none listed as running on 27 Nov) |
 | flight_rules | the row types, `callSettingsGrantFor`; rows replace `modelSignInsCallsMayGoOutAs` | flight-rules-55 |
 | airlock_api, airlock | the settings entry, binding, `ModelCall` without model and sign-in | airlock-api-b2, airlock-d5 |
-| docking_station | the rules file's people list and named rows; matching `where` at admission (frozen) or writing the file to the logbook (live) | docking-station-97 |
+| docking_station | the rules file's people list and named rows; writing each version of the file to the logbook | docking-station-97 |
 | infra | a new rules-file format, so an infra window and a fresh logbook (the one-shape rule) | infra-95 |
 
 All of these are breaking, so they should ship as one batch, in one window.
 
 ## Open
 
-1. Frozen or live (above). Under frozen, `where` never reaches the airlock;
-   under live, the airlock matches it.
-2. Do fetch and web-request grants move into the table too? They have no
-   `who`, because a tool's fetch is the agent's, not a person's. This draft
-   leaves them where they are.
+Do fetch and web-request grants move into the table too? They have no
+`who`, because a tool's fetch is the agent's, not a person's. This draft
+leaves them where they are, fixed at admission with the rest of a
+trajectory's makeup.
