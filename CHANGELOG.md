@@ -1,7 +1,10 @@
 ## 0.12.0
 
-- **Breaking:** `BotPool`, which `GoesAsBotLeasedFrom` holds and `leasedNow` is keyed by, is is_sign_in_vocabulary's, the package it moved to from is_effects. A program that names a `BotPool` must import `package:is_sign_in_vocabulary/bot_pool.dart`. One that passes only `leasedNow: const {}` needs no change.
-- Depends on is_effects ^0.20.0 and is_sign_in_vocabulary ^0.1.2.
+- **Breaking:** no longer depends on is_effects, which was broken up into vocabularies. The types in this package's API come from them:
+  - `ModelSignInName` (`modelSignInsCallsMayGoOutAs`, `allowsModelCall`) and `ModelAndSignIn` (`startingModel`) from is_model_vocabulary.
+  - `ProgramName` (`programsItMayRun`, `programsItNeeds`) from is_program_request_vocabulary.
+  - `BotPool` (`GoesAsBotLeasedFrom`, `leasedNow`) from `package:is_sign_in_vocabulary/bot_pool.dart`. A program that passes only `leasedNow: const {}` needs no import for it.
+- Depends on is_model_vocabulary ^0.5.0, is_program_request_vocabulary ^0.1.0, is_sign_in_vocabulary ^0.1.2 and is_tool_definition_vocabulary ^0.8.0.
 - The flight-rules.json format is unchanged.
 
 ## 0.11.0
