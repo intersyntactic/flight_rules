@@ -2,7 +2,8 @@
 
 Status: for review by Nick and airlock-api-b2. Nothing is built yet. Rules
 are live, and a withdrawn choice falls back and tells the person (Nick, 28
-Nov). One question is open, at the end.
+Nov). Fetch and web-request grants are live rows too, since threads stay
+open for days to weeks (Nick, 28 Nov).
 
 ## What Nick asked for (27 Nov 2026)
 
@@ -32,8 +33,13 @@ work: `webRequestsGrantFor` returns the grant, not a yes.
 |---|---|---|
 | who | whose action the row covers | `anyone` (any named person in the conversation), or a person from the people list |
 | where | which conversation | `anywhere`, or a mission (a channel) |
-| allows | what the row lets them do | choose call settings, or send to another mission |
+| allows | what the row lets them do | choose call settings, send to another mission, fetch, or make web requests |
 | needs first | what must happen first | nothing, an okay from someone, or a Projection |
+
+Not every kind of row has every column. A row is a sealed case per kind of
+`allows`, each carrying only the columns it uses: fetch and web-request rows
+have no `who` and no `needs first` (see [Fetch and web-request
+rows](#fetch-and-web-request-rows)).
 
 Each column is a closed set of cases (a sealed class), so a row the code
 can't enforce can't be written. A new kind of permission is a code change,
@@ -49,6 +55,12 @@ because the airlock can only enforce what it has code to check.
 
 There is no row keyed by a bare `ActorId`: Nick wants one person, not one per
 account.
+
+In the file, `anyone` is the bare word and a person is always an object,
+`who: {person: hart}`. `anyone` is a valid `PersonName`, so writing a person
+as a bare name too would let a person called `anyone` collide with the
+keyword. With the two written differently, no name is reserved and none can
+collide.
 
 ### The commander
 
@@ -105,14 +117,28 @@ taken away has to reach the threads already open.
 
 Instead, the rules file is written to the logbook as a versioned entry, and
 the airlock decides each action against the newest version. It matches
-`where` itself, with a function shared with the docking station. A change
+`where` itself, with a function in flight_rules that the docking station
+calls too: a thread's mission is its `containingAddress`, or its own
+address for a chat with no threads, the rule the docking station's
+`AddressesLetIn` keeps today. One function, so the two can't disagree about
+which mission a thread is in. A change
 reaches every open thread at its next action. The record names the version
 and the row.
 
+"Newest" means the newest rules entry **before the action's proposal in
+logbook order**, never the newest when the airlock happens to decide, so
+replaying the logbook decides the same way every time. A version is that
+entry's `EntryId`, with no counter of its own, and a decision lists it in
+`reliedOn`. The airlock keeps the newest rules in memory, updating them
+when a rules entry passes as it follows the chain, so deciding costs a
+match over the rows, not a logbook read.
+
 - **Only the table and the people list are live.** A trajectory's makeup
-  (`programsItMayRun`, `programsItNeeds`, `givenTools`, fetch and
-  web-request grants) stays fixed at admission, so a new version can't take
-  away a program partway through a step.
+  (`programsItMayRun`, `programsItNeeds`, `givenTools`) stays fixed at
+  admission, so a new version can't take away a program partway through a
+  step. Fetch and web-request grants are rows in the table, so they are
+  live: taking one away refuses the next request, which harms nothing
+  already running.
 - **The rules entry is its own logbook kind**, which the sender table lets
   only the docking station's user write. The airlock decides each action
   against the newest rules entry written before that action's proposal. The
@@ -137,6 +163,29 @@ and the row.
 - **Readers accept the previous rules format too** (airlock-api's task 126,
   in this batch on Nick's ruling of 28 Nov), since under live rules the
   file changes while threads run.
+- **A new version is written by an operator command**, not by watching the
+  file: a one-shot command (beside `close_trajectory`) reads the file,
+  reads it back strictly, and writes it as the next version. It refuses to
+  write a version it can't read back. The docking station also reads the
+  newest rules from the logbook rather than from the file, so it and the
+  airlock never decide on different versions.
+- **No rules entry yet means refuse.** The docking station writes version 1
+  before it admits anything. An action with no rules entry before its
+  proposal is refused, whatever it is.
+- **A newest entry the airlock can't read means refuse, not fall back.**
+  Skipping it to decide on the version before would bring back any grant it
+  took away. Refusing everything until a readable version is written fails
+  safe. The command refusing unreadable versions, and the sender table
+  letting only the docking station write the kind, keep this from happening
+  by accident.
+- **Each rules entry names its format, and the command writes only a format
+  every live reader knows.** Reading its own write back can't catch a
+  reader that is behind: a docking station that writes format 2 while the
+  airlock reads only format 1 would turn every action off until the airlock
+  is upgraded. So the command takes a setting for which format it writes,
+  defaulting to the oldest format every live reader knows, as decisions do
+  with `decisionFormat`. Readers learn a format first; writers move to it
+  after.
 
 ### allows
 
@@ -148,6 +197,8 @@ and the row.
   are the ones the rows name.
 - `SendToMission(to)`: a message may cross to the mission `to`, or to any
   mission, sent by the mission's commander.
+- `Fetch(GrantToFetch)` and `MakeWebRequests(GrantToMakeWebRequests)`: the
+  grants `WhatMayLeaveThisMachine` holds today, unchanged, moved into rows.
 
 ### needs first
 
@@ -175,10 +226,12 @@ makes the file unreadable, as an unknown program does today. A decision
 records both the `ActorId` and the `PersonName` it resolved to, so the
 logbook answers "for whom" even after the list changes.
 
-The types, a `PersonName` and the list, belong beside `ActorId` in is_shapes,
-whose doc already plans "a table beside them" for joining accounts. That
-is a change in the shapes repo, so it's a brief to that repo's session, not
-work done from here.
+The types are `PersonName` and `PersonAccounts` in is_shapes 0.6.1
+(https://github.com/intersyntactic/shapes/pull/25), beside `ActorId`.
+`PersonAccounts` can't be built with an account under two people, or with a
+person who has no accounts, since a row naming that person could never
+match. Its `fromJson` reads the value of `people`, and names the faulty part
+relative to it, so the rules reader prefixes `people.`.
 
 ## Binding call settings
 
@@ -225,32 +278,91 @@ rules:
     who: anyone   where: anywhere
     allows: choose claude-team, models: [claude-sonnet-5-5], effort up to high
   - name: hart-claude-anything
-    who: hart     where: anywhere
+    who: {person: hart}   where: anywhere
     allows: choose claude-team, any model, any effort
   - name: hart-gpt-in-finance
-    who: hart     where: in mission teams:19:finance@thread.v2
+    who: {person: hart}   where: in mission teams:19:finance@thread.v2
     allows: choose openai-team, models: [gpt-5]
   - name: legal-to-finance
     who: anyone   where: in mission teams:19:legal@thread.v2
     allows: send to mission teams:19:finance@thread.v2
     needs first: okay from hart
+  - name: finance-reads-ledger
+    where: in mission teams:19:finance@thread.v2
+    allows: fetch from addresses under https://ledger.example/api/, as nobody
 ```
 
 ## What changes, and who does it
 
 | Where | Change | Session |
 |---|---|---|
-| shapes | `PersonName`, the people list | the shapes session (none listed as running on 27 Nov) |
-| flight_rules | the row types, `callSettingsGrantFor`; rows replace `modelSignInsCallsMayGoOutAs` | flight-rules-55 |
-| airlock_api, airlock | the settings entry, binding, `ModelCall` without model and sign-in | airlock-api-b2, airlock-d5 |
+| shapes | `PersonName`, `PersonAccounts` (additive, 0.6.1, needs no window) | shapes-6e |
+| flight_rules | the row types, `callSettingsGrantFor`; rows replace `modelSignInsCallsMayGoOutAs`, `fetchesMayReach` and `webRequestsMayReach`; the grant lookups return the row's name and version | flight-rules-55 |
+| airlock_api, airlock | the settings entry, binding, `ModelCall` without model and sign-in; `Deny` gets a sealed reason in place of its `String` (`NoRowCovers`, `GrantWithdrawn`, `NoRulesEntry`, `UnreadableRules`, and a catch-all for today's refusals), and `Allow` names its row and rules entry, in is_airlock_api 0.27.0 behind `decisionFormat` | airlock-api-b2, airlock-d5 |
 | docking_station | the rules file's people list and named rows; writing each version of the file to the logbook | docking-station-97 |
 | infra | a new rules-file format, so an infra window and a fresh logbook (the one-shape rule) | infra-95 |
 
 All of these are breaking, so they should ship as one batch, in one window.
 
-## Open
+## Fetch and web-request rows
 
-Do fetch and web-request grants move into the table too? They have no
-`who`, because a tool's fetch is the agent's, not a person's. This draft
-leaves them where they are, fixed at admission with the rest of a
-trajectory's makeup.
+Nick, 28 Nov: threads stay open for days to weeks. A grant fixed at
+admission would then outlive its being taken away by that long, and web
+requests are the channel words most easily leave by. So these grants are
+live, and they are rows.
+
+**Live** needs only the versioned rules entry: the airlock checks each fetch
+and web request against the newest version, as it does a model call.
+
+**Rows**, rather than a live copy of today's lists, so that `where` has one
+encoding and one matching function. Keeping the lists would need a second
+way to say "only in this mission" (the per-mission override map), and a
+second function to match it.
+
+- **No `who`, no `needs first`.** A tool's fetch is the agent's act, not a
+  person's, so no person is there to cover or to okay it. These row kinds
+  don't carry the columns, so a fetch row naming a person can't be written.
+- **The decision names the row and the version.** `fetchGrantFor` and
+  `webRequestsGrantFor` already return the grant rather than a yes; they
+  return the row's `RuleName` and the rules version beside it, so the
+  logbook answers "why was this allowed?" as it does for every other row.
+- **`ToOwnReplyEndpoint` stays relative to the thread.** It names wherever
+  replies to the event that started the trajectory go, so one row covers
+  every thread its `where` covers, each reaching its own endpoint.
+- **A refusal says the grant was withdrawn**, so the loop can tell "stop
+  trying" from an ordinary refusal (the model still sees the tool, and
+  will keep calling it), and the person learns why a tool that worked
+  yesterday doesn't today. When no row covers a request, the airlock takes
+  this trajectory's **last** Allow of the same kind (fetch, or web request)
+  and matches the request against the rules version that Allow relied on.
+  If a row there covers it, the refusal is `GrantWithdrawn`, naming that
+  row and that Allow's entry, so the logbook itself proves it used to work.
+  No row to key on survives the withdrawal, which is why the check goes by
+  kind, and why the last Allow is enough: it's the rules the thread last
+  worked under. Every trajectory shares the rules versions, so the airlock
+  holds each parsed version once, by its `EntryId`. Per trajectory and kind
+  it remembers only two ids: the last Allow's entry, and the rules entry
+  that Allow relied on. A version is dropped once no trajectory's last Allow
+  names it.
+- **Tools stay frozen while their grants go live.** A tool given at
+  admission whose grant is taken away is still given, and every request it
+  makes is refused. That is the wanted result: the tool can't reach what it
+  may no longer reach, and nothing is pulled out from under a running step.
+
+What this costs:
+
+- **A thread can gain reach while it runs.** A row added today reaches
+  every open thread its `where` covers. Rows only add, so this follows from
+  live rules, as it does for call settings, but it's new for fetches.
+- **A mission can no longer reach less than the default.** Today
+  `byMissionAddress` replaces a mission's rules whole, so a mission can
+  narrow them. Rows only add, so an `Anywhere` fetch row reaches every
+  mission. A file that narrows has to be rewritten as `InMission` rows for
+  every mission but the narrowed one, so a new channel reaches nothing until
+  someone writes its row. That fails closed, which suits fetches, but it's
+  more to write. The live file has no per-mission overrides at all (infra,
+  28 Nov), so converting it needs only the default's rows.
+- **Admission no longer lists everything a thread could reach.** "What could
+  this thread reach at time T?" is answered instead by the rows whose
+  `where` covers it in the rules version that was newest at T. That's one
+  logbook read, not a field on the admission.
