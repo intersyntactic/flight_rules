@@ -111,7 +111,11 @@ taken away has to reach the threads already open.
 
 Instead, the rules file is written to the logbook as a versioned entry, and
 the airlock decides each action against the newest version. It matches
-`where` itself, with a function shared with the docking station. A change
+`where` itself, with a function in flight_rules that the docking station
+calls too: a thread's mission is its `containingAddress`, or its own
+address for a chat with no threads, the rule the docking station's
+`AddressesLetIn` keeps today. One function, so the two can't disagree about
+which mission a thread is in. A change
 reaches every open thread at its next action. The record names the version
 and the row.
 
@@ -145,6 +149,22 @@ and the row.
 - **Readers accept the previous rules format too** (airlock-api's task 126,
   in this batch on Nick's ruling of 28 Nov), since under live rules the
   file changes while threads run.
+- **A new version is written by an operator command**, not by watching the
+  file: a one-shot command (beside `close_trajectory`) reads the file,
+  reads it back strictly, and writes it as the next version. It refuses to
+  write a version it can't read back. The docking station also reads the
+  newest rules from the logbook rather than from the file, so it and the
+  airlock never decide on different versions.
+- **No rules entry yet means refuse.** The docking station writes version 1
+  before it admits anything. An action with no rules entry before its
+  proposal is refused, whatever it is.
+- **A newest entry the airlock can't read means refuse, not fall back.**
+  Skipping it to decide on the version before would bring back any grant it
+  took away. Refusing everything until a readable version is written fails
+  safe. The command refusing unreadable versions, and the sender table
+  letting only the docking station write the kind, keep this from happening
+  by accident. It also orders a rollout: the airlock must read a new format
+  before any version in that format is written.
 
 ### allows
 
@@ -300,6 +320,14 @@ What this costs:
 - **A thread can gain reach while it runs.** A row added today reaches
   every open thread its `where` covers. Rows only add, so this follows from
   live rules, as it does for call settings, but it's new for fetches.
+- **A mission can no longer reach less than the default.** Today
+  `byMissionAddress` replaces a mission's rules whole, so a mission can
+  narrow them. Rows only add, so an `Anywhere` fetch row reaches every
+  mission. A file that narrows has to be rewritten as `InMission` rows for
+  every mission but the narrowed one, so a new channel reaches nothing until
+  someone writes its row. That fails closed, which suits fetches, but it's
+  more to write. Before the window, infra checks the live file for a
+  narrowing override.
 - **Admission no longer lists everything a thread could reach.** "What could
   this thread reach at time T?" is answered instead by the rows whose
   `where` covers it in the rules version that was newest at T. That's one
