@@ -3,7 +3,7 @@ import 'package:is_effects/is_effects.dart';
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart';
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
 import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
-    show ReplyEndpoint, RepliesInSlackConversation, RepliesUnderWebAddress;
+    show ReplyEndpoint, RepliesUnderWebAddress, RepliesWithPinnedBodyFields;
 
 import 'path_pattern.dart';
 import 'read_strictly.dart';
@@ -136,9 +136,9 @@ final class WhatMayLeaveThisMachine {
   /// [replyEndpoint] is where replies to the event that started this
   /// trajectory go, or null when no event did. A [ToOwnReplyEndpoint] grant
   /// lets a request through only under a [RepliesUnderWebAddress] prefix;
-  /// for a [RepliesInSlackConversation] it lets none through, since Slack
-  /// names the conversation in the body, so a Slack reply leaves only as a
-  /// reply the airlock builds from the endpoint itself.
+  /// for a [RepliesWithPinnedBodyFields] it lets none through, since the
+  /// conversation is named in the body, which these rules never read, so
+  /// such a reply leaves only as one the airlock builds from the endpoint.
   ///
   /// A request under no sign-in matches only a [GoesAsNobody] grant, so a
   /// grant to reach a site anonymously never lets the trajectory make
@@ -171,7 +171,7 @@ final class WhatMayLeaveThisMachine {
   /// [ToOwnReplyEndpoint] grant on [replyEndpoint]'s origin goes as, by
   /// name before by lease, as [webRequestsGrantFor] prefers, so every
   /// request the loop builds under a [RepliesUnderWebAddress] goes as it is
-  /// granted. For a [RepliesInSlackConversation], whether and as whom the
+  /// granted. For a [RepliesWithPinnedBodyFields], whether and as whom the
   /// trajectory may reply in its conversation at all. Null when
   /// none can. A reply grant under no sign-in is never chosen, since a
   /// reply is posted as someone. [leasedNow] and [pooled] are as
@@ -181,10 +181,7 @@ final class WhatMayLeaveThisMachine {
     required Map<BotPool, SignIn> leasedNow,
     required Set<SignIn> pooled,
   }) {
-    final origin = switch (replyEndpoint) {
-      RepliesUnderWebAddress(:final prefix) => prefix.origin,
-      RepliesInSlackConversation(:final origin) => origin,
-    };
+    final origin = replyEndpoint.origin;
     final replyGrantsGoAs = [
       for (final grant in webRequestsMayReach)
         if (grant.to case ToOwnReplyEndpoint(:final onOneOf)
@@ -540,12 +537,13 @@ final class ToOwnReplyEndpoint extends WhereWebRequestsGo {
     WebPath path,
     ReplyEndpoint? replyEndpoint,
   ) => switch (replyEndpoint) {
-    RepliesUnderWebAddress(:final prefix)
-        when onOneOf.contains(prefix.origin) && prefix.covers(site, path) =>
-      prefix.pathPrefix,
-    // Slack names the conversation in the request's body, which these rules
-    // never read, so no raw request to Slack is confined to its conversation.
-    RepliesUnderWebAddress() || RepliesInSlackConversation() || null => null,
+    RepliesUnderWebAddress()
+        when onOneOf.contains(replyEndpoint.origin) &&
+            replyEndpoint.admitsAddress(site, path) =>
+      replyEndpoint.redirectsStayUnder,
+    // These endpoints name the conversation in the request's body, which
+    // these rules never read, so no raw request to one is confined to it.
+    RepliesUnderWebAddress() || RepliesWithPinnedBodyFields() || null => null,
   };
 
   @override

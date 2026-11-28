@@ -1,3 +1,11 @@
+## 0.11.0
+
+- **Breaking:** depends on is_conversation_vocabulary ^0.2.0, whose `ReplyEndpoint` has two cases, neither named for a service: `RepliesUnderWebAddress`, and `RepliesWithPinnedBodyFields` in place of `RepliesInSlackConversation`. A program passing a reply endpoint must build it from 0.2.0.
+- `signInForReply` works for any endpoint, Slack's, WhatsApp's or a later one's, by its `origin`.
+- `webRequestsGrantFor` lets no raw web request through under a `RepliesWithPinnedBodyFields` endpoint, even one to its own address, since the conversation is named in the body and these rules never read bodies. Under a `RepliesUnderWebAddress` endpoint it is decided as before.
+- Depends on checked_json ^0.4.0, is_effects ^0.19.0 and is_tool_definition_vocabulary ^0.7.0.
+- The flight-rules.json format is unchanged.
+
 ## 0.10.0
 
 - **Breaking:** `ReplyEndpoint` is is_conversation_vocabulary's, which is_conversation_reply_vocabulary was merged into. A program passing one must import it from there too.
