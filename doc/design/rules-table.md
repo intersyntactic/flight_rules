@@ -2,7 +2,8 @@
 
 Status: for review by Nick and airlock-api-b2. Nothing is built yet. Rules
 are live, and a withdrawn choice falls back and tells the person (Nick, 28
-Nov). One question is open, at the end.
+Nov). Fetch and web-request grants are live rows too, since threads stay
+open for days to weeks (Nick, 28 Nov).
 
 ## What Nick asked for (27 Nov 2026)
 
@@ -32,8 +33,13 @@ work: `webRequestsGrantFor` returns the grant, not a yes.
 |---|---|---|
 | who | whose action the row covers | `anyone` (any named person in the conversation), or a person from the people list |
 | where | which conversation | `anywhere`, or a mission (a channel) |
-| allows | what the row lets them do | choose call settings, or send to another mission |
+| allows | what the row lets them do | choose call settings, send to another mission, fetch, or make web requests |
 | needs first | what must happen first | nothing, an okay from someone, or a Projection |
+
+Not every kind of row has every column. A row is a sealed case per kind of
+`allows`, each carrying only the columns it uses: fetch and web-request rows
+have no `who` and no `needs first` (see [Fetch and web-request
+rows](#fetch-and-web-request-rows)).
 
 Each column is a closed set of cases (a sealed class), so a row the code
 can't enforce can't be written. A new kind of permission is a code change,
@@ -110,9 +116,11 @@ reaches every open thread at its next action. The record names the version
 and the row.
 
 - **Only the table and the people list are live.** A trajectory's makeup
-  (`programsItMayRun`, `programsItNeeds`, `givenTools`, fetch and
-  web-request grants) stays fixed at admission, so a new version can't take
-  away a program partway through a step.
+  (`programsItMayRun`, `programsItNeeds`, `givenTools`) stays fixed at
+  admission, so a new version can't take away a program partway through a
+  step. Fetch and web-request grants are rows in the table, so they are
+  live: taking one away refuses the next request, which harms nothing
+  already running.
 - **The rules entry is its own logbook kind**, which the sender table lets
   only the docking station's user write. The airlock decides each action
   against the newest rules entry written before that action's proposal. The
@@ -148,6 +156,8 @@ and the row.
   are the ones the rows name.
 - `SendToMission(to)`: a message may cross to the mission `to`, or to any
   mission, sent by the mission's commander.
+- `Fetch(GrantToFetch)` and `MakeWebRequests(GrantToMakeWebRequests)`: the
+  grants `WhatMayLeaveThisMachine` holds today, unchanged, moved into rows.
 
 ### needs first
 
@@ -234,6 +244,9 @@ rules:
     who: anyone   where: in mission teams:19:legal@thread.v2
     allows: send to mission teams:19:finance@thread.v2
     needs first: okay from hart
+  - name: finance-reads-ledger
+    where: in mission teams:19:finance@thread.v2
+    allows: fetch from addresses under https://ledger.example/api/, as nobody
 ```
 
 ## What changes, and who does it
@@ -241,16 +254,53 @@ rules:
 | Where | Change | Session |
 |---|---|---|
 | shapes | `PersonName`, the people list | the shapes session (none listed as running on 27 Nov) |
-| flight_rules | the row types, `callSettingsGrantFor`; rows replace `modelSignInsCallsMayGoOutAs` | flight-rules-55 |
+| flight_rules | the row types, `callSettingsGrantFor`; rows replace `modelSignInsCallsMayGoOutAs`, `fetchesMayReach` and `webRequestsMayReach`; the grant lookups return the row's name and version | flight-rules-55 |
 | airlock_api, airlock | the settings entry, binding, `ModelCall` without model and sign-in | airlock-api-b2, airlock-d5 |
 | docking_station | the rules file's people list and named rows; writing each version of the file to the logbook | docking-station-97 |
 | infra | a new rules-file format, so an infra window and a fresh logbook (the one-shape rule) | infra-95 |
 
 All of these are breaking, so they should ship as one batch, in one window.
 
-## Open
+## Fetch and web-request rows
 
-Do fetch and web-request grants move into the table too? They have no
-`who`, because a tool's fetch is the agent's, not a person's. This draft
-leaves them where they are, fixed at admission with the rest of a
-trajectory's makeup.
+Nick, 28 Nov: threads stay open for days to weeks. A grant fixed at
+admission would then outlive its being taken away by that long, and web
+requests are the channel words most easily leave by. So these grants are
+live, and they are rows.
+
+**Live** needs only the versioned rules entry: the airlock checks each fetch
+and web request against the newest version, as it does a model call.
+
+**Rows**, rather than a live copy of today's lists, so that `where` has one
+encoding and one matching function. Keeping the lists would need a second
+way to say "only in this mission" (the per-mission override map), and a
+second function to match it.
+
+- **No `who`, no `needs first`.** A tool's fetch is the agent's act, not a
+  person's, so no person is there to cover or to okay it. These row kinds
+  don't carry the columns, so a fetch row naming a person can't be written.
+- **The decision names the row and the version.** `fetchGrantFor` and
+  `webRequestsGrantFor` already return the grant rather than a yes; they
+  return the row's `RuleName` and the rules version beside it, so the
+  logbook answers "why was this allowed?" as it does for every other row.
+- **`ToOwnReplyEndpoint` stays relative to the thread.** It names wherever
+  replies to the event that started the trajectory go, so one row covers
+  every thread its `where` covers, each reaching its own endpoint.
+- **A refusal says the grant was withdrawn**, when a row that allowed an
+  earlier request from this trajectory no longer covers this one, so the
+  person learns why a tool that worked yesterday doesn't today. It goes the
+  same way a withdrawn settings choice does.
+- **Tools stay frozen while their grants go live.** A tool given at
+  admission whose grant is taken away is still given, and every request it
+  makes is refused. That is the wanted result: the tool can't reach what it
+  may no longer reach, and nothing is pulled out from under a running step.
+
+What this costs:
+
+- **A thread can gain reach while it runs.** A row added today reaches
+  every open thread its `where` covers. Rows only add, so this follows from
+  live rules, as it does for call settings, but it's new for fetches.
+- **Admission no longer lists everything a thread could reach.** "What could
+  this thread reach at time T?" is answered instead by the rows whose
+  `where` covers it in the rules version that was newest at T. That's one
+  logbook read, not a field on the admission.
