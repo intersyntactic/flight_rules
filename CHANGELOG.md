@@ -1,3 +1,9 @@
+## 0.12.0
+
+- **Breaking:** `BotPool`, which `GoesAsBotLeasedFrom` holds and `leasedNow` is keyed by, is is_sign_in_vocabulary's, the package it moved to from is_effects. A program that names a `BotPool` must import it from there. One that passes only `leasedNow: const {}` needs no change.
+- Depends on is_effects ^0.20.0 and is_sign_in_vocabulary ^0.1.1.
+- The flight-rules.json format is unchanged.
+
 ## 0.11.0
 
 - **Breaking:** depends on is_conversation_vocabulary ^0.2.0, whose `ReplyEndpoint` has two cases, neither named for a service: `RepliesUnderWebAddress`, and `RepliesWithPinnedBodyFields` in place of `RepliesInSlackConversation`. A program passing a reply endpoint must build it from 0.2.0.
