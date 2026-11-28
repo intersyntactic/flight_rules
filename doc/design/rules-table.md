@@ -163,8 +163,15 @@ and the row.
   took away. Refusing everything until a readable version is written fails
   safe. The command refusing unreadable versions, and the sender table
   letting only the docking station write the kind, keep this from happening
-  by accident. It also orders a rollout: the airlock must read a new format
-  before any version in that format is written.
+  by accident.
+- **Each rules entry names its format, and the command writes only a format
+  every live reader knows.** Reading its own write back can't catch a
+  reader that is behind: a docking station that writes format 2 while the
+  airlock reads only format 1 would turn every action off until the airlock
+  is upgraded. So the command takes a setting for which format it writes,
+  defaulting to the oldest format every live reader knows, as decisions do
+  with `decisionFormat`. Readers learn a format first; writers move to it
+  after.
 
 ### allows
 
