@@ -1,7 +1,10 @@
 import 'dart:convert';
 
 import 'package:checked_json/checked_json.dart';
-import 'package:is_effects/is_effects.dart';
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show ModelAndSignIn, ModelName, ModelSignInName;
+import 'package:is_program_request_vocabulary/is_program_request_vocabulary.dart'
+    show ProgramName;
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart';
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
 import 'package:is_flight_rules/is_flight_rules.dart';

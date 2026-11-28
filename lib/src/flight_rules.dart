@@ -1,5 +1,8 @@
 import 'package:checked_json/checked_json.dart';
-import 'package:is_effects/is_effects.dart';
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show ModelAndSignIn;
+import 'package:is_program_request_vocabulary/is_program_request_vocabulary.dart'
+    show ProgramName, decodeProgramName, encodeProgramName;
 import 'package:is_tool_definition_vocabulary/is_tool_definition_vocabulary.dart'
     show Fetch, OneActionTool, ToolName;
 
@@ -123,10 +126,12 @@ final class FlightRules {
       'signIn',
       'model',
     });
-    final startingModel = decodeModelAndSignIn(
-      json.raw('startingModel'),
-      '$field.startingModel',
-    );
+    final ModelAndSignIn startingModel;
+    try {
+      startingModel = ModelAndSignIn.fromJson(json.raw('startingModel'));
+    } on FormatException catch (e) {
+      throw FormatException('$field.startingModel: ${e.message}');
+    }
     List<ProgramName> programs(String key) => [
       for (final (i, name) in json.list(key).indexed)
         decodeProgramName(name, '$field.$key[$i]'),
@@ -181,7 +186,7 @@ final class FlightRules {
 
   JsonObject toJson() => JsonObject.of({
     'whatMayLeaveThisMachine': whatMayLeaveThisMachine.toJson(),
-    'startingModel': encodeModelAndSignIn(startingModel),
+    'startingModel': startingModel.toJson(),
     'programsItMayRun': [
       for (final program in programsItMayRun) encodeProgramName(program),
     ],

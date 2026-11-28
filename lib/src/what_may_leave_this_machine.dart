@@ -1,5 +1,7 @@
 import 'package:checked_json/checked_json.dart';
-import 'package:is_effects/is_effects.dart';
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show ModelSignInName;
+import 'package:is_sign_in_vocabulary/bot_pool.dart';
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart';
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart';
 import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
@@ -46,8 +48,12 @@ final class WhatMayLeaveThisMachine {
     return WhatMayLeaveThisMachine(
       modelSignInsCallsMayGoOutAs: [
         for (final (i, name)
-            in json.list('modelSignInsCallsMayGoOutAs').indexed)
-          decodeModelSignInName(name, '$field.modelSignInsCallsMayGoOutAs[$i]'),
+            in json.strings('modelSignInsCallsMayGoOutAs').indexed)
+          ModelSignInName.parse(name) ??
+              (throw FormatException(
+                '$field.modelSignInsCallsMayGoOutAs[$i]: '
+                'not a model sign-in name: $name',
+              )),
       ],
       fetchesMayReach: [
         for (final (i, grant) in json.objects('fetchesMayReach').indexed)
@@ -219,8 +225,7 @@ final class WhatMayLeaveThisMachine {
 
   JsonObject toJson() => JsonObject.of({
     'modelSignInsCallsMayGoOutAs': [
-      for (final name in modelSignInsCallsMayGoOutAs)
-        encodeModelSignInName(name),
+      for (final name in modelSignInsCallsMayGoOutAs) name.name,
     ],
     'fetchesMayReach': [for (final grant in fetchesMayReach) grant.toJson()],
     'webRequestsMayReach': [

@@ -1,3 +1,12 @@
+## 0.12.0
+
+- **Breaking:** no longer depends on is_effects, which was broken up into vocabularies. The types in this package's API come from them:
+  - `ModelSignInName` (`modelSignInsCallsMayGoOutAs`, `allowsModelCall`) and `ModelAndSignIn` (`startingModel`) from is_model_vocabulary.
+  - `ProgramName` (`programsItMayRun`, `programsItNeeds`) from is_program_request_vocabulary.
+  - `BotPool` (`GoesAsBotLeasedFrom`, `leasedNow`) from `package:is_sign_in_vocabulary/bot_pool.dart`. A program that passes only `leasedNow: const {}` needs no import for it.
+- Depends on is_model_vocabulary ^0.5.0, is_program_request_vocabulary ^0.1.0, is_sign_in_vocabulary ^0.1.2 and is_tool_definition_vocabulary ^0.8.0.
+- The flight-rules.json format is unchanged.
+
 ## 0.11.0
 
 - **Breaking:** depends on is_conversation_vocabulary ^0.2.0, whose `ReplyEndpoint` has two cases, neither named for a service: `RepliesUnderWebAddress`, and `RepliesWithPinnedBodyFields` in place of `RepliesInSlackConversation`. A program passing a reply endpoint must build it from 0.2.0.
