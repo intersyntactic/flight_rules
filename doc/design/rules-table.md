@@ -339,8 +339,11 @@ second function to match it.
   row and that Allow's entry, so the logbook itself proves it used to work.
   No row to key on survives the withdrawal, which is why the check goes by
   kind, and why the last Allow is enough: it's the rules the thread last
-  worked under. The airlock keeps, per trajectory and kind, only the rows
-  of that one version.
+  worked under. Every trajectory shares the rules versions, so the airlock
+  holds each parsed version once, by its `EntryId`. Per trajectory and kind
+  it remembers only two ids: the last Allow's entry, and the rules entry
+  that Allow relied on. A version is dropped once no trajectory's last Allow
+  names it.
 - **Tools stay frozen while their grants go live.** A tool given at
   admission whose grant is taken away is still given, and every request it
   makes is refused. That is the wanted result: the tool can't reach what it
