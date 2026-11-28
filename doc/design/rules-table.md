@@ -56,6 +56,12 @@ because the airlock can only enforce what it has code to check.
 There is no row keyed by a bare `ActorId`: Nick wants one person, not one per
 account.
 
+In the file, `anyone` is the bare word and a person is always an object,
+`who: {person: hart}`. `anyone` is a valid `PersonName`, so writing a person
+as a bare name too would let a person called `anyone` collide with the
+keyword. With the two written differently, no name is reserved and none can
+collide.
+
 ### The commander
 
 Nick ruled on 28 Nov (loop-launcher's task 57) that each mission has exactly
@@ -212,10 +218,12 @@ makes the file unreadable, as an unknown program does today. A decision
 records both the `ActorId` and the `PersonName` it resolved to, so the
 logbook answers "for whom" even after the list changes.
 
-The types, a `PersonName` and the list, belong beside `ActorId` in is_shapes,
-whose doc already plans "a table beside them" for joining accounts. That
-is a change in the shapes repo, so it's a brief to that repo's session, not
-work done from here.
+The types are `PersonName` and `PersonAccounts` in is_shapes 0.6.1
+(https://github.com/intersyntactic/shapes/pull/25), beside `ActorId`.
+`PersonAccounts` can't be built with an account under two people, or with a
+person who has no accounts, since a row naming that person could never
+match. Its `fromJson` reads the value of `people`, and names the faulty part
+relative to it, so the rules reader prefixes `people.`.
 
 ## Binding call settings
 
@@ -262,10 +270,10 @@ rules:
     who: anyone   where: anywhere
     allows: choose claude-team, models: [claude-sonnet-5-5], effort up to high
   - name: hart-claude-anything
-    who: hart     where: anywhere
+    who: {person: hart}   where: anywhere
     allows: choose claude-team, any model, any effort
   - name: hart-gpt-in-finance
-    who: hart     where: in mission teams:19:finance@thread.v2
+    who: {person: hart}   where: in mission teams:19:finance@thread.v2
     allows: choose openai-team, models: [gpt-5]
   - name: legal-to-finance
     who: anyone   where: in mission teams:19:legal@thread.v2
@@ -280,7 +288,7 @@ rules:
 
 | Where | Change | Session |
 |---|---|---|
-| shapes | `PersonName`, the people list | the shapes session (none listed as running on 27 Nov) |
+| shapes | `PersonName`, `PersonAccounts` (additive, 0.6.1, needs no window) | shapes-6e |
 | flight_rules | the row types, `callSettingsGrantFor`; rows replace `modelSignInsCallsMayGoOutAs`, `fetchesMayReach` and `webRequestsMayReach`; the grant lookups return the row's name and version | flight-rules-55 |
 | airlock_api, airlock | the settings entry, binding, `ModelCall` without model and sign-in | airlock-api-b2, airlock-d5 |
 | docking_station | the rules file's people list and named rows; writing each version of the file to the logbook | docking-station-97 |
