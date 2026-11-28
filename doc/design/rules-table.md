@@ -125,6 +125,14 @@ which mission a thread is in. A change
 reaches every open thread at its next action. The record names the version
 and the row.
 
+"Newest" means the newest rules entry **before the action's proposal in
+logbook order**, never the newest when the airlock happens to decide, so
+replaying the logbook decides the same way every time. A version is that
+entry's `EntryId`, with no counter of its own, and a decision lists it in
+`reliedOn`. The airlock keeps the newest rules in memory, updating them
+when a rules entry passes as it follows the chain, so deciding costs a
+match over the rows, not a logbook read.
+
 - **Only the table and the people list are live.** A trajectory's makeup
   (`programsItMayRun`, `programsItNeeds`, `givenTools`) stays fixed at
   admission, so a new version can't take away a program partway through a
@@ -290,7 +298,7 @@ rules:
 |---|---|---|
 | shapes | `PersonName`, `PersonAccounts` (additive, 0.6.1, needs no window) | shapes-6e |
 | flight_rules | the row types, `callSettingsGrantFor`; rows replace `modelSignInsCallsMayGoOutAs`, `fetchesMayReach` and `webRequestsMayReach`; the grant lookups return the row's name and version | flight-rules-55 |
-| airlock_api, airlock | the settings entry, binding, `ModelCall` without model and sign-in | airlock-api-b2, airlock-d5 |
+| airlock_api, airlock | the settings entry, binding, `ModelCall` without model and sign-in; `Deny` gets a sealed reason in place of its `String` (`NoRowCovers`, `GrantWithdrawn`, `NoRulesEntry`, `UnreadableRules`, and a catch-all for today's refusals), and `Allow` names its row and rules entry, in is_airlock_api 0.27.0 behind `decisionFormat` | airlock-api-b2, airlock-d5 |
 | docking_station | the rules file's people list and named rows; writing each version of the file to the logbook | docking-station-97 |
 | infra | a new rules-file format, so an infra window and a fresh logbook (the one-shape rule) | infra-95 |
 
@@ -321,10 +329,18 @@ second function to match it.
 - **`ToOwnReplyEndpoint` stays relative to the thread.** It names wherever
   replies to the event that started the trajectory go, so one row covers
   every thread its `where` covers, each reaching its own endpoint.
-- **A refusal says the grant was withdrawn**, when a row that allowed an
-  earlier request from this trajectory no longer covers this one, so the
-  person learns why a tool that worked yesterday doesn't today. It goes the
-  same way a withdrawn settings choice does.
+- **A refusal says the grant was withdrawn**, so the loop can tell "stop
+  trying" from an ordinary refusal (the model still sees the tool, and
+  will keep calling it), and the person learns why a tool that worked
+  yesterday doesn't today. When no row covers a request, the airlock takes
+  this trajectory's **last** Allow of the same kind (fetch, or web request)
+  and matches the request against the rules version that Allow relied on.
+  If a row there covers it, the refusal is `GrantWithdrawn`, naming that
+  row and that Allow's entry, so the logbook itself proves it used to work.
+  No row to key on survives the withdrawal, which is why the check goes by
+  kind, and why the last Allow is enough: it's the rules the thread last
+  worked under. The airlock keeps, per trajectory and kind, only the rows
+  of that one version.
 - **Tools stay frozen while their grants go live.** A tool given at
   admission whose grant is taken away is still given, and every request it
   makes is refused. That is the wanted result: the tool can't reach what it
