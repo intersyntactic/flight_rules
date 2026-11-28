@@ -1,0 +1,256 @@
+# The rules table: per-person, per-conversation permissions
+
+Status: for review by Nick and airlock-api-b2. Nothing is built yet. Rules
+are live, and a withdrawn choice falls back and tells the person (Nick, 28
+Nov). One question is open, at the end.
+
+## What Nick asked for (27 Nov 2026)
+
+- Call settings **bind**. The model, sign-in and effort a person chooses are
+  what the airlock sends every call with. The loop can only ask for a change.
+- Rules for messages between missions **differ per mission**.
+- The most general shape. A simple default, with permissions that can be
+  decided down to a fine grain: different people can have different settings
+  in different situations.
+- A "situation" is **a conversation or channel**.
+- One human on Slack and on Teams is **one person**.
+- Custom rules are **rows in a table**.
+
+## The idea in one paragraph
+
+The rules become a table. Each row grants one thing, to someone, somewhere,
+perhaps after something else has happened first. Rows only ever add: no row
+takes away what another gave. So an action is allowed exactly when some row
+covers it, and nothing has to decide which row wins. When the airlock allows
+something, it records the row that allowed it, so the logbook can always
+answer "why was this allowed, and for whom?". This is how web requests already
+work: `webRequestsGrantFor` returns the grant, not a yes.
+
+## The columns
+
+| Column | Holds | Cases |
+|---|---|---|
+| who | whose action the row covers | `anyone` (any named person in the conversation), or a person from the people list |
+| where | which conversation | `anywhere`, or a mission (a channel) |
+| allows | what the row lets them do | choose call settings, or send to another mission |
+| needs first | what must happen first | nothing, an okay from someone, or a Projection |
+
+Each column is a closed set of cases (a sealed class), so a row the code
+can't enforce can't be written. A new kind of permission is a code change,
+because the airlock can only enforce what it has code to check.
+
+### who
+
+- `Anyone`: any **named** person in the conversation. An event that names no
+  person (`TranslatedEvent.from` is null) is covered by no row at all, not
+  even `Anyone`. It gets the trajectory's `startingModel` and can't choose
+  anything else.
+- `Person(name)`: a person from the people list, under any of their accounts.
+
+There is no row keyed by a bare `ActorId`: Nick wants one person, not one per
+account.
+
+### The commander
+
+Nick ruled on 28 Nov (loop-launcher's task 57) that each mission has exactly
+one commander, named in a `commander` field of its rules. Left unset, it is
+the coordinator bot of whoever started the mission (such as CAM). Every
+crossing to another mission goes out through the commander. The
+`SendToMission` rows decide whether it may go and what it needs first.
+
+The commander is an agent, not a person, so it never appears in `who`. A
+crossing row's `who` names the people whose words may be sent, and its
+`OkayFrom` names the people who must okay them. Who may change the
+commander is whoever edits the rules file, and since rules are live, the
+change reaches open threads at their next crossing.
+
+The airlock's decision on a crossing records the commander that sent it,
+as its `ActorId` (an `agent:` id), beside the row's name and the
+`PersonName`s it resolved for `who` and `OkayFrom`. The `commander` field can
+change between rules versions, so the record names the agent itself, not
+"the commander", and still answers "who sent this" after the field changes.
+
+### where
+
+A mission is a channel (or a chat with no threads), and each thread in it is
+one trajectory, as the docking station's README puts it.
+
+- `Anywhere`
+- `InMission(AddressInExternalSystem)`: any thread of that channel.
+- `InThread(AddressInExternalSystem)`: one thread. A thread's address
+  exists only once someone has posted in it, so this row is always written
+  after its trajectory is admitted. Live rules are what make it reach the
+  thread: the airlock reads the newest rules at every action.
+
+The docking station's rules file is already a table with only this column:
+`default` is an `Anywhere` row, and `byMissionAddress` holds `InMission`
+rows. This design adds the other three columns. A row whose `InMission`
+names a channel the docking station doesn't let in makes the file
+unreadable, as it does today.
+
+### Each row has a name
+
+Every row carries a `RuleName`, unique in the file, such as
+`hart-opus-anywhere`. The airlock records that name as what allowed an
+action, so "why was this allowed?" leads back to a line someone wrote, wherever
+the row was copied to.
+
+### When rules change: live (Nick, 28 Nov)
+
+Today the docking station reads the rules file once, at service start, and
+copies the rules into each trajectory's admission, so a change, including a
+grant taken away, reaches only threads started after a restart. That was
+the alternative, called frozen. It was turned down because a permission
+taken away has to reach the threads already open.
+
+Instead, the rules file is written to the logbook as a versioned entry, and
+the airlock decides each action against the newest version. It matches
+`where` itself, with a function shared with the docking station. A change
+reaches every open thread at its next action. The record names the version
+and the row.
+
+- **Only the table and the people list are live.** A trajectory's makeup
+  (`programsItMayRun`, `programsItNeeds`, `givenTools`, fetch and
+  web-request grants) stays fixed at admission, so a new version can't take
+  away a program partway through a step.
+- **The rules entry is its own logbook kind**, which the sender table lets
+  only the docking station's user write. The airlock decides each action
+  against the newest rules entry written before that action's proposal. The
+  logbook keeps one order, so "newest" always has one answer.
+- **A row is the same row across versions when it has the same name.** At
+  each call the airlock looks up the row the decision named, by name, in
+  the newest version, and checks it still covers that person and those
+  settings. Fixing a typo keeps every choice made under the row. Narrowing
+  the row withdraws only the choices it no longer covers. Removing or
+  renaming it withdraws them all.
+- **`FromStartingModel` names the rules version it came from**, since
+  `startingModel` can change between versions too.
+- **A call whose choice is withdrawn falls back and tells the person**
+  (Nick, 28 Nov). It goes as the newest `startingModel`, recorded as
+  `FromStartingModel`. The airlock can't reply, so its decision records
+  that the choice was withdrawn. The program that posts the trajectory's
+  replies reads that and tells the person; whether that's the loop or the
+  docking station is still to settle with them. The alternative, refusing
+  the call until someone chooses again, was turned down: a trajectory that
+  stalls until someone happens to look is worse than one that keeps going
+  on the default and says why.
+- **Readers accept the previous rules format too** (airlock-api's task 126,
+  in this batch on Nick's ruling of 28 Nov), since under live rules the
+  file changes while threads run.
+
+### allows
+
+- `ChooseCallSettings(signIn, models, effortUpTo)`: the person may choose
+  that sign-in, with any of `models` (or any model), at an effort up to
+  `effortUpTo` (or any). Effort compares by `Effort.rank`, so a level this
+  code doesn't know ranks above every limit and is refused. These rows
+  replace `modelSignInsCallsMayGoOutAs`: the sign-ins calls may go out as
+  are the ones the rows name.
+- `SendToMission(to)`: a message may cross to the mission `to`, or to any
+  mission, sent by the mission's commander.
+
+### needs first
+
+- `Nothing`
+- `OkayFrom(who)`: someone `who` covers, in the sending conversation, okays
+  that exact text going out. This is loop-launcher's "decided like a
+  declassification".
+- `Projection`: the text is drawn up by a Projection, not relayed.
+
+Call-settings rows take only `Nothing`: the person choosing is the one
+acting.
+
+## The people list
+
+```
+people:
+  hart: [slack:T01/U9, teams:acme/4f2…]
+```
+
+A person's name, with every account that is theirs. The list lives in the
+rules file. Only whoever edits that file can link two accounts, because
+linking an account to `hart` hands it Hart's permissions. An account may
+appear under at most one person. A row naming a person not on the list
+makes the file unreadable, as an unknown program does today. A decision
+records both the `ActorId` and the `PersonName` it resolved to, so the
+logbook answers "for whom" even after the list changes.
+
+The types, a `PersonName` and the list, belong beside `ActorId` in is_shapes,
+whose doc already plans "a table beside them" for joining accounts. That
+is a change in the shapes repo, so it's a brief to that repo's session, not
+work done from here.
+
+## Binding call settings
+
+1. A person chooses settings in the conversation: the More options dialog,
+   or the agent proposing "switch to Opus" and the person accepting. The
+   docking station writes a **settings choice**, a logbook kind of its own,
+   holding the exact settings and the person's `ActorId` from the event they
+   wrote. The logbook's sender table lets only the docking station's user
+   write that kind, so the loop can't write one. An acceptance carries the
+   exact settings it accepts, so a "yes" can't bind something the loop
+   swapped in.
+2. The airlock reads choosers only from that kind. It finds the person for
+   the account, then a `ChooseCallSettings` row that covers them. If one
+   does, it writes its decision: the settings, the chooser's `ActorId`, the
+   `PersonName` it resolved to, the row's name, and the choice it answers.
+   If none does, nothing changes.
+3. Every model call takes its sign-in, model and effort from the newest
+   allowed choice, or from `startingModel` when there is none. The loop no
+   longer sends them: `ModelCall` shrinks to its request (airlock-api's
+   breaking change).
+4. At each call, `allowsModelCall(signIn) → bool` becomes
+   `callSettingsGrantFor(…) → CallSettingsGrant?`, a sealed result:
+   - `FromStartingModel`: no choice was made, and the call goes as the
+     rules file's `startingModel`, granted by whoever wrote the file.
+   - `ChosenUnderRow(decision)`: the call points at the airlock's decision
+     on the newest choice, which already names its row. It doesn't search
+     the rows again. Rows overlap (in the examples below, both
+     `everyone-sonnet` and `hart-claude-anything` cover Hart choosing
+     Sonnet), so a second search could name a different row than the
+     decision did.
+   - `WithdrawnToStartingModel(decision, version)`: the decision's row no
+     longer covers the choice in the newest rules version, so the call goes
+     as that version's `startingModel`, and the record says which choice
+     was withdrawn so the person can be told.
+
+   It never returns null for a model call: a withdrawn choice falls back.
+   So every call's record says which applied, and "why" has one answer.
+
+## Examples
+
+```
+rules:
+  - name: everyone-sonnet
+    who: anyone   where: anywhere
+    allows: choose claude-team, models: [claude-sonnet-5-5], effort up to high
+  - name: hart-claude-anything
+    who: hart     where: anywhere
+    allows: choose claude-team, any model, any effort
+  - name: hart-gpt-in-finance
+    who: hart     where: in mission teams:19:finance@thread.v2
+    allows: choose openai-team, models: [gpt-5]
+  - name: legal-to-finance
+    who: anyone   where: in mission teams:19:legal@thread.v2
+    allows: send to mission teams:19:finance@thread.v2
+    needs first: okay from hart
+```
+
+## What changes, and who does it
+
+| Where | Change | Session |
+|---|---|---|
+| shapes | `PersonName`, the people list | the shapes session (none listed as running on 27 Nov) |
+| flight_rules | the row types, `callSettingsGrantFor`; rows replace `modelSignInsCallsMayGoOutAs` | flight-rules-55 |
+| airlock_api, airlock | the settings entry, binding, `ModelCall` without model and sign-in | airlock-api-b2, airlock-d5 |
+| docking_station | the rules file's people list and named rows; writing each version of the file to the logbook | docking-station-97 |
+| infra | a new rules-file format, so an infra window and a fresh logbook (the one-shape rule) | infra-95 |
+
+All of these are breaking, so they should ship as one batch, in one window.
+
+## Open
+
+Do fetch and web-request grants move into the table too? They have no
+`who`, because a tool's fetch is the agent's, not a person's. This draft
+leaves them where they are, fixed at admission with the rest of a
+trajectory's makeup.
